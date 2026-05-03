@@ -9,6 +9,7 @@ router.use(requireAuth);
 
 router.get('/', goalController.listGoals);
 router.post('/', goalController.createGoal);
+router.post('/suggest-tasks', goalController.suggestTasks);
 router.post('/:goalId/contributions', goalController.addContribution);
 router.post('/:goalId/notes', goalController.addNote);
 router.post('/:goalId/tasks/:taskId/complete', goalController.completeTask);

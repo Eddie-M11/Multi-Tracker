@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Coins,
+  CreditCard,
   Heart,
   LogOut,
   MessageSquare,
@@ -14,6 +15,7 @@ import {
   Sparkles,
   Sun,
   Target,
+  Trash2,
   Users,
   Wallet,
   X,
@@ -33,11 +35,36 @@ const initialGoalForm = {
   note: '',
 };
 
+const initialCreditCardForm = {
+  cardName: '',
+  bank: '',
+  openDate: '',
+  targetPayoffDate: '',
+  purchaseBalance: '',
+  purchaseApr: '',
+  minimumPayment: '',
+  plannedMonthlyPayment: '',
+  monthlyDueDay: '',
+  hasCashAdvance: false,
+  cashAdvanceBalance: '',
+  cashAdvanceApr: '',
+  cashAdvanceDate: '',
+  cashAdvanceFee: '',
+};
+
+const taskRewards = {
+  easy: { xp: 20, coins: 5 },
+  medium: { xp: 35, coins: 8 },
+  hard: { xp: 60, coins: 15 },
+};
+
 const initialTasks = [
-  { title: '', difficulty: 'easy', xp: 20, coins: 5 },
-  { title: '', difficulty: 'medium', xp: 35, coins: 8 },
-  { title: '', difficulty: 'hard', xp: 60, coins: 15 },
+  { title: '', difficulty: 'easy' },
+  { title: '', difficulty: 'medium' },
+  { title: '', difficulty: 'hard' },
 ];
+
+const dueDayOptions = Array.from({ length: 31 }, (_, index) => index + 1);
 
 function formatMoney(value) {
   return new Intl.NumberFormat('en-US', {
@@ -55,6 +82,133 @@ function formatDate(value) {
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(value));
+}
+
+function getTaskReward(difficulty) {
+  return taskRewards[difficulty] || taskRewards.easy;
+}
+
+function formatPercent(value) {
+  return `${Number(value || 0).toFixed(2).replace(/\.00$/, '')}%`;
+}
+
+function formatOrdinal(number) {
+  const value = Number(number);
+  const suffixes = ['th', 'st', 'nd', 'rd'];
+  const lastTwo = value % 100;
+  const suffix = suffixes[(lastTwo - 20) % 10] || suffixes[lastTwo] || suffixes[0];
+  return `${value}${suffix}`;
+}
+
+function toMoneyNumber(value) {
+  const numberValue = Number(value || 0);
+  if (!Number.isFinite(numberValue)) return 0;
+  return Math.max(0, Math.round(numberValue * 100) / 100);
+}
+
+function addMonths(date, months) {
+  const nextDate = new Date(date);
+  nextDate.setMonth(nextDate.getMonth() + months);
+  return nextDate;
+}
+
+function dueDateForMonth(startDate, dueDay, monthOffset) {
+  const dueDate = addMonths(startDate, monthOffset);
+  const lastDay = new Date(dueDate.getFullYear(), dueDate.getMonth() + 1, 0).getDate();
+  dueDate.setDate(Math.min(Number(dueDay || 1), lastDay));
+  return dueDate;
+}
+
+function monthsUntilTarget(targetPayoffDate, dueDay) {
+  if (!targetPayoffDate) return 0;
+
+  const today = new Date();
+  const targetDate = new Date(targetPayoffDate);
+  let months = 1;
+
+  while (months < 360 && dueDateForMonth(today, dueDay || 1, months - 1) < targetDate) {
+    months += 1;
+  }
+
+  return months;
+}
+
+function canPayoffInMonths({ purchaseBalance, cashAdvanceBalance, purchaseApr, cashAdvanceApr, monthlyPayment, months }) {
+  let purchase = toMoneyNumber(purchaseBalance);
+  let cashAdvance = toMoneyNumber(cashAdvanceBalance);
+  const payment = toMoneyNumber(monthlyPayment);
+  const purchaseMonthlyRate = Number(purchaseApr || 0) / 100 / 12;
+  const cashAdvanceMonthlyRate = Number(cashAdvanceApr || 0) / 100 / 12;
+
+  if (payment <= 0 || months <= 0) return false;
+
+  for (let month = 0; month < months; month += 1) {
+    purchase = toMoneyNumber(purchase + (purchase * purchaseMonthlyRate));
+    cashAdvance = toMoneyNumber(cashAdvance + (cashAdvance * cashAdvanceMonthlyRate));
+
+    let remainingPayment = Math.min(payment, purchase + cashAdvance);
+    const cashFirst = Number(cashAdvanceApr || 0) >= Number(purchaseApr || 0);
+
+    if (cashFirst) {
+      const cashPaid = Math.min(cashAdvance, remainingPayment);
+      cashAdvance = toMoneyNumber(cashAdvance - cashPaid);
+      remainingPayment = toMoneyNumber(remainingPayment - cashPaid);
+      purchase = toMoneyNumber(purchase - Math.min(purchase, remainingPayment));
+    } else {
+      const purchasePaid = Math.min(purchase, remainingPayment);
+      purchase = toMoneyNumber(purchase - purchasePaid);
+      remainingPayment = toMoneyNumber(remainingPayment - purchasePaid);
+      cashAdvance = toMoneyNumber(cashAdvance - Math.min(cashAdvance, remainingPayment));
+    }
+
+    if (purchase + cashAdvance <= 0) return true;
+  }
+
+  return purchase + cashAdvance <= 0;
+}
+
+function calculateRequiredCreditPayment(form) {
+  const hasCashAdvance = Boolean(form.hasCashAdvance);
+  const purchaseBalance = toMoneyNumber(form.purchaseBalance);
+  const cashAdvanceBalance = hasCashAdvance
+    ? toMoneyNumber(Number(form.cashAdvanceBalance || 0) + Number(form.cashAdvanceFee || 0))
+    : 0;
+  const totalBalance = toMoneyNumber(purchaseBalance + cashAdvanceBalance);
+  const months = monthsUntilTarget(form.targetPayoffDate, form.monthlyDueDay);
+
+  if (!totalBalance || !months || !form.purchaseApr) {
+    return { amount: 0, months, totalBalance };
+  }
+
+  let low = 1;
+  let high = Math.max(totalBalance * 1.5, Number(form.minimumPayment || 0), 50);
+  const input = {
+    purchaseBalance,
+    cashAdvanceBalance,
+    purchaseApr: Number(form.purchaseApr || 0),
+    cashAdvanceApr: hasCashAdvance ? Number(form.cashAdvanceApr || 0) : 0,
+    months,
+  };
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (canPayoffInMonths({ ...input, monthlyPayment: high })) break;
+    high *= 1.5;
+  }
+
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const mid = (low + high) / 2;
+    if (canPayoffInMonths({ ...input, monthlyPayment: mid })) {
+      high = mid;
+    } else {
+      low = mid;
+    }
+  }
+
+  return {
+    amount: toMoneyNumber(Math.max(high, Number(form.minimumPayment || 0))),
+    months,
+    totalBalance,
+  };
 }
 
 function VisualMeter({ goal }) {
@@ -93,19 +247,30 @@ function Financials({ theme, onToggleTheme }) {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [goals, setGoals] = useState([]);
+  const [creditCardPlans, setCreditCardPlans] = useState([]);
   const [selectedGoalId, setSelectedGoalId] = useState(null);
+  const [selectedCreditCardPlanId, setSelectedCreditCardPlanId] = useState(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCreditCardOpen, setIsCreditCardOpen] = useState(false);
   const [goalForm, setGoalForm] = useState(initialGoalForm);
+  const [creditCardForm, setCreditCardForm] = useState(initialCreditCardForm);
   const [tasks, setTasks] = useState(initialTasks);
   const [contributions, setContributions] = useState({});
   const [notes, setNotes] = useState({});
+  const [creditPayments, setCreditPayments] = useState({});
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGeneratingTasks, setIsGeneratingTasks] = useState(false);
 
   const selectedGoal = useMemo(
     () => goals.find((goal) => goal.id === selectedGoalId) || null,
     [goals, selectedGoalId]
+  );
+
+  const selectedCreditCardPlan = useMemo(
+    () => creditCardPlans.find((plan) => plan.id === selectedCreditCardPlanId) || null,
+    [creditCardPlans, selectedCreditCardPlanId]
   );
 
   const totals = useMemo(() => {
@@ -119,10 +284,27 @@ function Financials({ theme, onToggleTheme }) {
     );
   }, [goals]);
 
+  const creditTotals = useMemo(() => {
+    return creditCardPlans.reduce(
+      (summary, plan) => ({
+        balance: summary.balance + plan.totalBalance,
+        original: summary.original + plan.originalBalance,
+        active: summary.active + (plan.status === 'active' ? 1 : 0),
+      }),
+      { balance: 0, original: 0, active: 0 }
+    );
+  }, [creditCardPlans]);
+
+  const creditPaymentPreview = useMemo(
+    () => calculateRequiredCreditPayment(creditCardForm),
+    [creditCardForm]
+  );
+
   async function loadFinancials() {
-    const [meResponse, goalsResponse] = await Promise.all([
+    const [meResponse, goalsResponse, creditPlansResponse] = await Promise.all([
       fetch('/api/auth/me', { credentials: 'include' }),
       fetch('/api/goals', { credentials: 'include' }),
+      fetch('/api/credit-card-plans', { credentials: 'include' }),
     ]);
 
     if (!meResponse.ok) {
@@ -134,11 +316,17 @@ function Financials({ theme, onToggleTheme }) {
       throw new Error('Could not load financial goals');
     }
 
+    if (!creditPlansResponse.ok) {
+      throw new Error('Could not load credit card plans');
+    }
+
     const meData = await meResponse.json();
     const goalsData = await goalsResponse.json();
+    const creditPlansData = await creditPlansResponse.json();
 
     setUser(meData.user);
     setGoals(goalsData.goals || []);
+    setCreditCardPlans(creditPlansData.plans || []);
   }
 
   useEffect(() => {
@@ -152,15 +340,22 @@ function Financials({ theme, onToggleTheme }) {
   }, [selectedGoal, selectedGoalId]);
 
   useEffect(() => {
+    if (selectedCreditCardPlanId && !selectedCreditCardPlan) {
+      setSelectedCreditCardPlanId(null);
+    }
+  }, [selectedCreditCardPlan, selectedCreditCardPlanId]);
+
+  useEffect(() => {
     function handleKeyDown(event) {
       if (event.key === 'Escape') {
         closeCreateGoal();
+        closeCreditCardPlan();
       }
     }
 
-    document.body.style.overflow = isCreateOpen ? 'hidden' : '';
+    document.body.style.overflow = isCreateOpen || isCreditCardOpen ? 'hidden' : '';
 
-    if (isCreateOpen) {
+    if (isCreateOpen || isCreditCardOpen) {
       window.addEventListener('keydown', handleKeyDown);
     }
 
@@ -168,11 +363,19 @@ function Financials({ theme, onToggleTheme }) {
       document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isCreateOpen]);
+  }, [isCreateOpen, isCreditCardOpen]);
 
   function handleGoalChange(event) {
     const { name, value } = event.target;
     setGoalForm((currentForm) => ({ ...currentForm, [name]: value }));
+  }
+
+  function handleCreditCardChange(event) {
+    const { checked, name, type, value } = event.target;
+    setCreditCardForm((currentForm) => ({
+      ...currentForm,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
   }
 
   function handleTaskChange(index, field, value) {
@@ -181,19 +384,45 @@ function Financials({ theme, onToggleTheme }) {
     )));
   }
 
+  function addTaskRow() {
+    setTasks((currentTasks) => [...currentTasks, { title: '', difficulty: 'easy' }]);
+  }
+
+  function deleteTaskRow(index) {
+    setTasks((currentTasks) => currentTasks.filter((_, taskIndex) => taskIndex !== index));
+  }
+
   function openCreateGoal() {
     setSelectedGoalId(null);
+    setSelectedCreditCardPlanId(null);
     setIsCreateOpen(true);
+    setIsCreditCardOpen(false);
     setGoalForm(initialGoalForm);
     setTasks(initialTasks);
     setMessage('');
     setError('');
   }
 
+  function openCreditCardPlan() {
+    setSelectedGoalId(null);
+    setSelectedCreditCardPlanId(null);
+    setIsCreateOpen(false);
+    setIsCreditCardOpen(true);
+    setCreditCardForm(initialCreditCardForm);
+    setMessage('');
+    setError('');
+  }
+
+  function closeCreditCardPlan() {
+    setIsCreditCardOpen(false);
+    setCreditCardForm(initialCreditCardForm);
+  }
+
   function closeCreateGoal() {
     setIsCreateOpen(false);
     setGoalForm(initialGoalForm);
     setTasks(initialTasks);
+    setIsGeneratingTasks(false);
   }
 
   function chooseGoalType(visibility) {
@@ -203,6 +432,12 @@ function Financials({ theme, onToggleTheme }) {
   function upsertGoal(updatedGoal) {
     setGoals((currentGoals) => currentGoals.map((goal) => (
       goal.id === updatedGoal.id ? updatedGoal : goal
+    )));
+  }
+
+  function upsertCreditCardPlan(updatedPlan) {
+    setCreditCardPlans((currentPlans) => currentPlans.map((plan) => (
+      plan.id === updatedPlan.id ? updatedPlan : plan
     )));
   }
 
@@ -234,8 +469,8 @@ function Financials({ theme, onToggleTheme }) {
           currentAmount: Number(goalForm.currentAmount || 0),
           tasks: tasks.map((task) => ({
             ...task,
-            xp: Number(task.xp || 0),
-            coins: Number(task.coins || 0),
+            xp: getTaskReward(task.difficulty).xp,
+            coins: getTaskReward(task.difficulty).coins,
           })),
         }),
       });
@@ -252,6 +487,95 @@ function Financials({ theme, onToggleTheme }) {
       setIsCreateOpen(false);
       setSelectedGoalId(data.goal.id);
       setMessage(`Created ${data.goal.title}`);
+    } catch (submitError) {
+      setError(submitError.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleSuggestTasks() {
+    setError('');
+    setMessage('');
+
+    if (!goalForm.visibility || !goalForm.title.trim()) {
+      setError('Choose a goal type and add a title before generating tasks.');
+      return;
+    }
+
+    setIsGeneratingTasks(true);
+
+    try {
+      const response = await fetch('/api/goals/suggest-tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          title: goalForm.title,
+          description: goalForm.description,
+          visibility: goalForm.visibility,
+          targetAmount: Number(goalForm.targetAmount || 0),
+          currentAmount: Number(goalForm.currentAmount || 0),
+          dueDate: goalForm.dueDate,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to generate task suggestions');
+      }
+
+      setTasks((data.tasks || []).map((task) => ({
+        title: task.title,
+        description: task.description || '',
+        difficulty: task.difficulty,
+      })));
+      setMessage('Task suggestions added. Keep what works and delete the rest.');
+    } catch (suggestError) {
+      setError(suggestError.message);
+    } finally {
+      setIsGeneratingTasks(false);
+    }
+  }
+
+  async function handleCreateCreditCardPlan(event) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await fetch('/api/credit-card-plans', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          ...creditCardForm,
+          purchaseBalance: Number(creditCardForm.purchaseBalance || 0),
+          purchaseApr: Number(creditCardForm.purchaseApr || 0),
+          minimumPayment: Number(creditCardForm.minimumPayment || 0),
+          plannedMonthlyPayment: creditPaymentPreview.amount,
+          monthlyDueDay: Number(creditCardForm.monthlyDueDay || 1),
+          cashAdvanceBalance: Number(creditCardForm.cashAdvanceBalance || 0),
+          cashAdvanceApr: Number(creditCardForm.cashAdvanceApr || 0),
+          cashAdvanceFee: Number(creditCardForm.cashAdvanceFee || 0),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create credit card plan');
+      }
+
+      setCreditCardPlans((currentPlans) => [data.plan, ...currentPlans]);
+      setCreditCardForm(initialCreditCardForm);
+      setIsCreditCardOpen(false);
+      setSelectedCreditCardPlanId(data.plan.id);
+      setMessage(`Created payoff plan for ${data.plan.cardName}.`);
     } catch (submitError) {
       setError(submitError.message);
     } finally {
@@ -362,6 +686,37 @@ function Financials({ theme, onToggleTheme }) {
     }
   }
 
+  async function handleCreditPayment(planId) {
+    const payment = creditPayments[planId] || {};
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await fetch(`/api/credit-card-plans/${planId}/payments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          amount: Number(payment.amount || selectedCreditCardPlan?.plannedMonthlyPayment || 0),
+          note: payment.note || '',
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to log payment');
+      }
+
+      upsertCreditCardPlan(data.plan);
+      setCreditPayments((current) => ({ ...current, [planId]: { amount: '', note: '' } }));
+      setMessage(`Great job. You paid ${formatMoney(payment.amount || selectedCreditCardPlan?.plannedMonthlyPayment)} toward ${data.plan.cardName}.`);
+    } catch (paymentError) {
+      setError(paymentError.message);
+    }
+  }
+
   return (
     <main className="dashboard-shell financials-shell">
       <aside className="dashboard-sidebar" aria-label="Financial navigation">
@@ -373,8 +728,12 @@ function Financials({ theme, onToggleTheme }) {
         <nav className="dashboard-nav">
           <Link to="/dashboard" className="nav-item">Overview</Link>
           <Link to="/financials" className="nav-item active">Financials</Link>
-          <button type="button" className="nav-item nav-button" onClick={() => setSelectedGoalId(null)}>Goals</button>
+          <button type="button" className="nav-item nav-button" onClick={() => {
+            setSelectedGoalId(null);
+            setSelectedCreditCardPlanId(null);
+          }}>Goals</button>
           <button type="button" className="nav-item nav-button" onClick={openCreateGoal}>Create</button>
+          <button type="button" className="nav-item nav-button" onClick={openCreditCardPlan}>Card plan</button>
         </nav>
       </aside>
 
@@ -404,17 +763,23 @@ function Financials({ theme, onToggleTheme }) {
           </div>
         </header>
 
-        {!selectedGoal && (
+        {!selectedGoal && !selectedCreditCardPlan && (
           <>
             <section className="finance-hero">
               <div>
                 <p className="eyebrow">Overview</p>
-                <h2>Track the goal first. Work the details inside it.</h2>
-                <p>Create personal goals for solo progress or shared goals with notes, chat, tasks, and team XP in one place.</p>
-                <button type="button" className="finance-primary-action" onClick={openCreateGoal}>
-                  <Plus size={18} />
-                  New goal
-                </button>
+                <h2>Track goals and payoff plans without mixing them up.</h2>
+                <p>Create savings goals, shared goals, and dedicated credit card payoff plans with clear next steps.</p>
+                <div className="hero-action-row">
+                  <button type="button" className="finance-primary-action" onClick={openCreateGoal}>
+                    <Plus size={18} />
+                    New goal
+                  </button>
+                  <button type="button" className="finance-secondary-action" onClick={openCreditCardPlan}>
+                    <CreditCard size={18} />
+                    Credit card plan
+                  </button>
+                </div>
               </div>
 
               <div className="finance-hero-stat">
@@ -440,60 +805,142 @@ function Financials({ theme, onToggleTheme }) {
                 <p>Progress</p>
                 <strong>{totals.target ? Math.round((totals.current / totals.target) * 100) : 0}%</strong>
               </article>
+              <article className="metric-card">
+                <span className="metric-icon rose"><CreditCard size={20} /></span>
+                <p>Card plans</p>
+                <strong>{creditTotals.active}</strong>
+              </article>
             </section>
           </>
         )}
 
-        {(message || error) && (
+        {!isCreateOpen && !isCreditCardOpen && (message || error) && (
           <div className="finance-alerts">
             {message && <p className="success-text">{message}</p>}
             {error && <p className="error-text">{error}</p>}
           </div>
         )}
 
-        {!selectedGoal && (
-          <section className="goal-board" id="goals" aria-label="Financial goals">
-            {goals.map((goal) => (
-              <button type="button" className="goal-card goal-summary-card" key={goal.id} onClick={() => setSelectedGoalId(goal.id)}>
-                <div className="goal-card-top">
-                  <div>
-                    <span className={goal.visibility === 'shared' ? 'goal-type shared' : 'goal-type'}>
-                      {goal.visibility === 'shared' ? 'Shared' : 'Personal'}
-                    </span>
-                    <h3>{goal.title}</h3>
-                    <p>{goal.description || 'No description yet.'}</p>
-                  </div>
-                  <VisualMeter goal={goal} />
+        {!selectedGoal && !selectedCreditCardPlan && (
+          <>
+            <section className="finance-section" id="goals" aria-label="Financial goals">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Goals created</p>
+                  <h2>Financial goals</h2>
                 </div>
-
-                <div className="goal-money-row">
-                  <strong>{formatMoney(goal.currentAmount)}</strong>
-                  <span>of {formatMoney(goal.targetAmount)}</span>
-                </div>
-
-                <div className="goal-progress-track">
-                  <span style={{ width: `${goal.progress}%` }} />
-                </div>
-
-                <div className="goal-card-footer">
-                  <span><CalendarDays size={16} /> {formatDate(goal.dueDate)}</span>
-                  <strong>Open goal</strong>
-                </div>
-              </button>
-            ))}
-
-            {goals.length === 0 && (
-              <article className="empty-goals">
-                <Target size={30} />
-                <h3>No financial goals yet</h3>
-                <p>Create your first goal and start stacking XP for every little money win.</p>
-                <button type="button" className="finance-primary-action" onClick={openCreateGoal}>
-                  <Plus size={18} />
+                <button type="button" className="ghost-button" onClick={openCreateGoal}>
+                  <Plus size={16} />
                   New goal
                 </button>
-              </article>
-            )}
-          </section>
+              </div>
+
+              <div className="goal-board">
+                {goals.map((goal) => (
+                  <button type="button" className="goal-card goal-summary-card" key={goal.id} onClick={() => setSelectedGoalId(goal.id)}>
+                    <div className="goal-card-top">
+                      <div>
+                        <span className={goal.visibility === 'shared' ? 'goal-type shared' : 'goal-type'}>
+                          {goal.visibility === 'shared' ? 'Shared' : 'Personal'}
+                        </span>
+                        <h3>{goal.title}</h3>
+                        <p>{goal.description || 'No description yet.'}</p>
+                      </div>
+                      <VisualMeter goal={goal} />
+                    </div>
+
+                    <div className="goal-money-row">
+                      <strong>{formatMoney(goal.currentAmount)}</strong>
+                      <span>of {formatMoney(goal.targetAmount)}</span>
+                    </div>
+
+                    <div className="goal-progress-track">
+                      <span style={{ width: `${goal.progress}%` }} />
+                    </div>
+
+                    <div className="goal-card-footer">
+                      <span><CalendarDays size={16} /> {formatDate(goal.dueDate)}</span>
+                      <strong>Open goal</strong>
+                    </div>
+                  </button>
+                ))}
+
+                {goals.length === 0 && (
+                  <article className="empty-goals">
+                    <Target size={30} />
+                    <h3>No financial goals yet</h3>
+                    <p>Create your first goal and start stacking XP for every little money win.</p>
+                    <button type="button" className="finance-primary-action" onClick={openCreateGoal}>
+                      <Plus size={18} />
+                      New goal
+                    </button>
+                  </article>
+                )}
+              </div>
+            </section>
+
+            <section className="finance-section" aria-label="Credit card payoff plans">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Credit card plans</p>
+                  <h2>Debt payoff plans</h2>
+                </div>
+                <button type="button" className="ghost-button" onClick={openCreditCardPlan}>
+                  <CreditCard size={16} />
+                  New card plan
+                </button>
+              </div>
+
+              <div className="goal-board credit-plan-board">
+                {creditCardPlans.map((plan) => (
+                  <button type="button" className="goal-card goal-summary-card credit-plan-card" key={plan.id} onClick={() => setSelectedCreditCardPlanId(plan.id)}>
+                    <div className="goal-card-top">
+                      <div>
+                        <span className="goal-type debt">Credit card</span>
+                        <h3>{plan.cardName}</h3>
+                        <p>{plan.bank || 'No bank added yet.'}</p>
+                      </div>
+                      <div className="debt-meter" aria-label={`${plan.progress}% paid down`}>
+                        <span>{plan.progress}%</span>
+                      </div>
+                    </div>
+
+                    <div className="goal-money-row">
+                      <strong>{formatMoney(plan.totalBalance)}</strong>
+                      <span>remaining</span>
+                    </div>
+
+                    <div className="goal-progress-track debt-track">
+                      <span style={{ width: `${plan.progress}%` }} />
+                    </div>
+
+                    <div className="credit-card-mini-grid">
+                      <span>APR <strong>{formatPercent(plan.purchaseApr)}</strong></span>
+                      <span>Calculated <strong>{formatMoney(plan.plannedMonthlyPayment)}</strong></span>
+                      <span>Target <strong>{formatDate(plan.targetPayoffDate)}</strong></span>
+                    </div>
+
+                    <div className="goal-card-footer">
+                      <span><CalendarDays size={16} /> Due {formatOrdinal(plan.monthlyDueDay)}</span>
+                      <strong>Open plan</strong>
+                    </div>
+                  </button>
+                ))}
+
+                {creditCardPlans.length === 0 && (
+                  <article className="empty-goals">
+                    <CreditCard size={30} />
+                    <h3>No credit card plans yet</h3>
+                    <p>Create a payoff plan with a target date, APR, and monthly payment strategy.</p>
+                    <button type="button" className="finance-primary-action" onClick={openCreditCardPlan}>
+                      <CreditCard size={18} />
+                      Credit card plan
+                    </button>
+                  </article>
+                )}
+              </div>
+            </section>
+          </>
         )}
 
         {selectedGoal && (
@@ -615,6 +1062,144 @@ function Financials({ theme, onToggleTheme }) {
             </section>
           </section>
         )}
+
+        {selectedCreditCardPlan && (
+          <section className="goal-detail">
+            <button type="button" className="back-button" onClick={() => setSelectedCreditCardPlanId(null)}>
+              <ArrowLeft size={18} />
+              Back to overview
+            </button>
+
+            <article className="goal-detail-hero debt-detail-hero">
+              <div>
+                <span className="goal-type debt">Credit card payoff</span>
+                <h2>{selectedCreditCardPlan.cardName}</h2>
+                <p>{selectedCreditCardPlan.bank || 'Credit card payoff plan'}</p>
+              </div>
+              <div className="debt-detail-meter">
+                <strong>{selectedCreditCardPlan.progress}%</strong>
+                <span>paid down</span>
+              </div>
+            </article>
+
+            <section className="goal-detail-grid">
+              <article className="finance-panel progress-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Remaining balance</p>
+                    <h3>{formatMoney(selectedCreditCardPlan.totalBalance)}</h3>
+                  </div>
+                  <span className="status-pill">Target {formatDate(selectedCreditCardPlan.targetPayoffDate)}</span>
+                </div>
+
+                <div className="goal-progress-track large debt-track">
+                  <span style={{ width: `${selectedCreditCardPlan.progress}%` }} />
+                </div>
+
+                <div className="debt-breakdown">
+                  <span>Purchase balance <strong>{formatMoney(selectedCreditCardPlan.purchaseBalance)}</strong></span>
+                  {selectedCreditCardPlan.hasCashAdvance && (
+                    <span>Cash advance <strong>{formatMoney(selectedCreditCardPlan.cashAdvanceBalance)}</strong></span>
+                  )}
+                  <span>Purchase APR <strong>{formatPercent(selectedCreditCardPlan.purchaseApr)}</strong></span>
+                  {selectedCreditCardPlan.hasCashAdvance && (
+                    <span>Cash advance APR <strong>{formatPercent(selectedCreditCardPlan.cashAdvanceApr)}</strong></span>
+                  )}
+                </div>
+
+                <div className="goal-actions credit-payment-actions">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder={formatMoney(selectedCreditCardPlan.plannedMonthlyPayment)}
+                    value={creditPayments[selectedCreditCardPlan.id]?.amount || ''}
+                    onChange={(event) => setCreditPayments((current) => ({
+                      ...current,
+                      [selectedCreditCardPlan.id]: { ...current[selectedCreditCardPlan.id], amount: event.target.value },
+                    }))}
+                  />
+                  <input
+                    placeholder="Optional note"
+                    value={creditPayments[selectedCreditCardPlan.id]?.note || ''}
+                    onChange={(event) => setCreditPayments((current) => ({
+                      ...current,
+                      [selectedCreditCardPlan.id]: { ...current[selectedCreditCardPlan.id], note: event.target.value },
+                    }))}
+                  />
+                  <button type="button" onClick={() => handleCreditPayment(selectedCreditCardPlan.id)}>Payment made</button>
+                </div>
+              </article>
+
+              <article className="finance-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Plan math</p>
+                    <h3>Payment target</h3>
+                  </div>
+                  <span className="status-pill">Due {formatOrdinal(selectedCreditCardPlan.monthlyDueDay)}</span>
+                </div>
+
+                <div className="debt-stat-grid">
+                  <span>Calculated payment <strong>{formatMoney(selectedCreditCardPlan.plannedMonthlyPayment)}</strong></span>
+                  <span>Required by target <strong>{formatMoney(selectedCreditCardPlan.requiredMonthlyPayment)}</strong></span>
+                  <span>Estimated interest <strong>{formatMoney(selectedCreditCardPlan.estimatedInterest)}</strong></span>
+                  <span>Estimated payoff <strong>{formatDate(selectedCreditCardPlan.estimatedPayoffDate)}</strong></span>
+                </div>
+
+                {selectedCreditCardPlan.aiTips.length > 0 && (
+                  <div className="ai-tip-list">
+                    <p className="eyebrow">AI habits</p>
+                    {selectedCreditCardPlan.aiTips.map((tip) => (
+                      <p key={tip}>{tip}</p>
+                    ))}
+                  </div>
+                )}
+              </article>
+
+              <article className="finance-panel goal-notes">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Payment schedule</p>
+                    <h3>Next checkpoints</h3>
+                  </div>
+                  <CalendarDays size={21} />
+                </div>
+
+                <div className="schedule-list">
+                  {selectedCreditCardPlan.schedule.slice(0, 6).map((item) => (
+                    <div className="schedule-row" key={`${selectedCreditCardPlan.id}-${item.month}`}>
+                      <span>{formatDate(item.dueDate)}</span>
+                      <strong>{formatMoney(item.payment)}</strong>
+                      <small>{formatMoney(item.totalBalance)} left</small>
+                    </div>
+                  ))}
+                  {selectedCreditCardPlan.schedule.length === 0 && <p className="muted-text">No schedule available yet.</p>}
+                </div>
+              </article>
+
+              <article className="finance-panel goal-notes">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Payment history</p>
+                    <h3>Completed payments</h3>
+                  </div>
+                  <CheckCircle2 size={21} />
+                </div>
+
+                <div className="schedule-list">
+                  {selectedCreditCardPlan.payments.slice().reverse().map((payment) => (
+                    <div className="schedule-row" key={payment._id}>
+                      <span>{formatDate(payment.paidAt)}</span>
+                      <strong>{formatMoney(payment.amount)}</strong>
+                      <small>{formatMoney(payment.balanceAfter)} left</small>
+                    </div>
+                  ))}
+                  {selectedCreditCardPlan.payments.length === 0 && <p className="muted-text">No payments logged yet.</p>}
+                </div>
+              </article>
+            </section>
+          </section>
+        )}
       </section>
 
       {isCreateOpen && (
@@ -657,6 +1242,13 @@ function Financials({ theme, onToggleTheme }) {
               </button>
             </div>
 
+            {(message || error) && (
+              <div className="finance-alerts modal-alerts">
+                {message && <p className="success-text">{message}</p>}
+                {error && <p className="error-text">{error}</p>}
+              </div>
+            )}
+
             {goalForm.visibility && (
               <form className="finance-form" onSubmit={handleCreateGoal}>
                 <label htmlFor="title">Goal title</label>
@@ -697,7 +1289,16 @@ function Financials({ theme, onToggleTheme }) {
                 <div className="task-builder">
                   <div className="panel-heading">
                     <h4>Starter tasks</h4>
-                    <span>Optional launch list</span>
+                    <div className="task-builder-actions">
+                      <button type="button" className="task-generate-button" onClick={handleSuggestTasks} disabled={isGeneratingTasks}>
+                        <Sparkles size={15} />
+                        {isGeneratingTasks ? 'Generating...' : 'Generate tasks'}
+                      </button>
+                      <button type="button" className="task-add-button" onClick={addTaskRow}>
+                        <Plus size={15} />
+                        Add task
+                      </button>
+                    </div>
                   </div>
 
                   {tasks.map((task, index) => (
@@ -712,8 +1313,17 @@ function Financials({ theme, onToggleTheme }) {
                         <option value="medium">Medium</option>
                         <option value="hard">Hard</option>
                       </select>
-                      <input type="number" min="0" value={task.xp} onChange={(event) => handleTaskChange(index, 'xp', event.target.value)} aria-label="XP reward" />
-                      <input type="number" min="0" value={task.coins} onChange={(event) => handleTaskChange(index, 'coins', event.target.value)} aria-label="Coin reward" />
+                      <span className="reward-pill" aria-label={`${getTaskReward(task.difficulty).xp} XP`}>
+                        <strong>{getTaskReward(task.difficulty).xp}</strong>
+                        XP
+                      </span>
+                      <span className="reward-pill" aria-label={`${getTaskReward(task.difficulty).coins} coins`}>
+                        <strong>{getTaskReward(task.difficulty).coins}</strong>
+                        coins
+                      </span>
+                      <button type="button" className="task-delete-button" onClick={() => deleteTaskRow(index)} aria-label={`Delete task ${index + 1}`}>
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -724,6 +1334,153 @@ function Financials({ theme, onToggleTheme }) {
                 </button>
               </form>
             )}
+          </section>
+        </div>
+      )}
+
+      {isCreditCardOpen && (
+        <div className="create-goal-modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && closeCreditCardPlan()}>
+          <section
+            className="finance-panel create-goal-panel create-goal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-credit-plan-title"
+          >
+            <div className="panel-heading modal-heading">
+              <div>
+                <p className="eyebrow">Credit card plan</p>
+                <h3 id="create-credit-plan-title">New payoff plan</h3>
+              </div>
+              <button type="button" className="icon-button" onClick={closeCreditCardPlan} aria-label="Close credit card plan modal">
+                <X size={18} />
+              </button>
+            </div>
+
+            {(message || error) && (
+              <div className="finance-alerts modal-alerts">
+                {message && <p className="success-text">{message}</p>}
+                {error && <p className="error-text">{error}</p>}
+              </div>
+            )}
+
+            <form className="finance-form" onSubmit={handleCreateCreditCardPlan}>
+              <div className="form-row">
+                <div>
+                  <label htmlFor="cardName">Card name</label>
+                  <input id="cardName" name="cardName" value={creditCardForm.cardName} onChange={handleCreditCardChange} placeholder="Everyday rewards card" required />
+                </div>
+                <div>
+                  <label htmlFor="bank">Bank</label>
+                  <input id="bank" name="bank" value={creditCardForm.bank} onChange={handleCreditCardChange} placeholder="Chase, Capital One, local credit union..." />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div>
+                  <label htmlFor="openDate">Open date</label>
+                  <input id="openDate" name="openDate" type="date" value={creditCardForm.openDate} onChange={handleCreditCardChange} />
+                </div>
+                <div>
+                  <label htmlFor="targetPayoffDate">Target payoff date</label>
+                  <input id="targetPayoffDate" name="targetPayoffDate" type="date" value={creditCardForm.targetPayoffDate} onChange={handleCreditCardChange} required />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div>
+                  <label htmlFor="purchaseBalance">Current balance</label>
+                  <div className="adorned-input">
+                    <span>$</span>
+                    <input id="purchaseBalance" name="purchaseBalance" type="number" min="0" step="0.01" value={creditCardForm.purchaseBalance} onChange={handleCreditCardChange} placeholder="0.00" required />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="purchaseApr">Purchase APR</label>
+                  <div className="adorned-input suffix">
+                    <input id="purchaseApr" name="purchaseApr" type="number" min="0" step="0.01" value={creditCardForm.purchaseApr} onChange={handleCreditCardChange} placeholder="0.00" required />
+                    <span>%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div>
+                  <label htmlFor="minimumPayment">Minimum monthly payment</label>
+                  <div className="adorned-input">
+                    <span>$</span>
+                    <input id="minimumPayment" name="minimumPayment" type="number" min="0" step="0.01" value={creditCardForm.minimumPayment} onChange={handleCreditCardChange} placeholder="0.00" required />
+                  </div>
+                </div>
+                <div>
+                  <label>Calculated monthly payment</label>
+                  <div className="calculated-payment-card">
+                    <strong>{formatMoney(creditPaymentPreview.amount)}</strong>
+                    <span>{creditPaymentPreview.months ? `${creditPaymentPreview.months} monthly payments` : 'Choose a payoff date'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <label htmlFor="monthlyDueDay">Monthly payment due day</label>
+              <select id="monthlyDueDay" name="monthlyDueDay" value={creditCardForm.monthlyDueDay} onChange={handleCreditCardChange} required>
+                <option value="">Choose due day</option>
+                {dueDayOptions.map((day) => (
+                  <option value={day} key={day}>{formatOrdinal(day)}</option>
+                ))}
+              </select>
+
+              <label className="checkbox-row" htmlFor="hasCashAdvance">
+                <input id="hasCashAdvance" name="hasCashAdvance" type="checkbox" checked={creditCardForm.hasCashAdvance} onChange={handleCreditCardChange} />
+                Is there a cash advance balance?
+              </label>
+
+              {creditCardForm.hasCashAdvance && (
+                <div className="cash-advance-panel">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="eyebrow">Cash advance</p>
+                      <h4>Separate APR bucket</h4>
+                    </div>
+                    <span className="status-pill">Estimated monthly interest</span>
+                  </div>
+
+                  <div className="form-row">
+                    <div>
+                      <label htmlFor="cashAdvanceBalance">Cash advance balance</label>
+                      <div className="adorned-input">
+                        <span>$</span>
+                        <input id="cashAdvanceBalance" name="cashAdvanceBalance" type="number" min="0" step="0.01" value={creditCardForm.cashAdvanceBalance} onChange={handleCreditCardChange} placeholder="0.00" />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="cashAdvanceApr">Cash advance APR</label>
+                      <div className="adorned-input suffix">
+                        <input id="cashAdvanceApr" name="cashAdvanceApr" type="number" min="0" step="0.01" value={creditCardForm.cashAdvanceApr} onChange={handleCreditCardChange} placeholder="0.00" />
+                        <span>%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <div>
+                      <label htmlFor="cashAdvanceDate">Cash advance date</label>
+                      <input id="cashAdvanceDate" name="cashAdvanceDate" type="date" value={creditCardForm.cashAdvanceDate} onChange={handleCreditCardChange} />
+                    </div>
+                    <div>
+                      <label htmlFor="cashAdvanceFee">Cash advance fee</label>
+                      <div className="adorned-input">
+                        <span>$</span>
+                        <input id="cashAdvanceFee" name="cashAdvanceFee" type="number" min="0" step="0.01" value={creditCardForm.cashAdvanceFee} onChange={handleCreditCardChange} placeholder="0.00" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button type="submit" className="finance-submit" disabled={isSubmitting}>
+                <CreditCard size={18} />
+                {isSubmitting ? 'Creating...' : 'Create payoff plan'}
+              </button>
+            </form>
           </section>
         </div>
       )}

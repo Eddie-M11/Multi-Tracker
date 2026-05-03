@@ -1,8 +1,44 @@
+const OpenAI = require('openai');
+
 const Goal = require('../models/Goal');
 const User = require('../models/User');
 
+const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
+
 function calculateLevel(xp) {
   return Math.floor(xp / 250) + 1;
+}
+
+const taskRewards = {
+  easy: { xp: 20, coins: 5 },
+  medium: { xp: 35, coins: 8 },
+  hard: { xp: 60, coins: 15 },
+};
+
+function getTaskReward(difficulty) {
+  return taskRewards[difficulty] || taskRewards.easy;
+}
+
+function normalizeTaskInput(task) {
+  const difficulty = taskRewards[task.difficulty] ? task.difficulty : 'easy';
+  const reward = getTaskReward(difficulty);
+
+  return {
+    title: String(task.title || '').trim(),
+    description: String(task.description || '').trim(),
+    difficulty,
+    xp: reward.xp,
+    coins: reward.coins,
+  };
+}
+
+function normalizeSuggestedTasks(tasks) {
+  if (!Array.isArray(tasks)) return [];
+
+  return tasks
+    .map(normalizeTaskInput)
+    .filter((task) => task.title)
+    .slice(0, 10);
 }
 
 function serializeGoal(goal) {
@@ -108,13 +144,7 @@ async function createGoal(req, res) {
       visualType,
       tasks: tasks
         .filter((task) => task.title)
-        .map((task) => ({
-          title: task.title,
-          description: task.description || '',
-          difficulty: task.difficulty || 'easy',
-          xp: task.xp || 20,
-          coins: task.coins || 5,
-        })),
+        .map(normalizeTaskInput),
       notes: note
         ? [{
             authorId: req.user._id,
@@ -127,6 +157,104 @@ async function createGoal(req, res) {
     return res.status(201).json({ goal: serializeGoal(goal) });
   } catch (error) {
     return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function suggestTasks(req, res) {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({ message: 'OpenAI API key is not configured' });
+    }
+
+    const {
+      title,
+      description = '',
+      visibility,
+      targetAmount,
+      currentAmount = 0,
+      dueDate = '',
+    } = req.body;
+
+    if (!title || !visibility) {
+      return res.status(400).json({ message: 'Goal title and type are required before generating tasks' });
+    }
+
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const response = await client.responses.create({
+      model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
+      input: [
+        {
+          role: 'system',
+          content: 'You create practical financial goal tasks. Return only tasks that are specific, measurable, and useful. Do not assign XP or coins.',
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            goal: {
+              type: visibility,
+              title,
+              description,
+              targetAmount,
+              currentAmount,
+              dueDate,
+            },
+            requirements: [
+              'Create 5 to 10 tasks.',
+              'Use a mix of quick wins and meaningful steps.',
+              'Use only easy, medium, or hard difficulty.',
+              'For shared goals, include collaboration-friendly tasks where useful.',
+              'Avoid duplicate tasks and vague tasks.',
+            ],
+          }),
+        },
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'financial_task_suggestions',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['tasks'],
+            properties: {
+              tasks: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['title', 'description', 'difficulty'],
+                  properties: {
+                    title: {
+                      type: 'string',
+                    },
+                    description: {
+                      type: 'string',
+                    },
+                    difficulty: {
+                      type: 'string',
+                      enum: ['easy', 'medium', 'hard'],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      max_output_tokens: 1800,
+    });
+
+    const parsed = JSON.parse(response.output_text || '{}');
+    const suggestedTasks = normalizeSuggestedTasks(parsed.tasks);
+
+    if (suggestedTasks.length === 0) {
+      return res.status(502).json({ message: 'AI did not return usable task suggestions' });
+    }
+
+    return res.status(200).json({ tasks: suggestedTasks });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to generate task suggestions' });
   }
 }
 
@@ -259,5 +387,6 @@ module.exports = {
   completeTask,
   createGoal,
   listGoals,
+  suggestTasks,
   undoTask,
 };
