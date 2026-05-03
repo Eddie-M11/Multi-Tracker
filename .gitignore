@@ -1,3 +1,6 @@
+# Dependencies (root + nested workspaces)
+node_modules/
+**/node_modules/
 # Dependencies
 node_modules/
 
@@ -5,6 +8,9 @@ node_modules/
 .env
 .env.*
 !.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 # Logs
 npm-debug.log*
@@ -20,11 +26,20 @@ pids
 *.pid.lock
 
 # Build outputs
+build/
+dist/
 dist/
 build/
 coverage/
 .next/
 out/
+
+# Tracker app build artifacts
+tracker-app/client/build/
+tracker-app/client/dist/
+tracker-app/client/.next/
+tracker-app/server/dist/
+tracker-app/server/coverage/
 
 # Caches
 .cache/
