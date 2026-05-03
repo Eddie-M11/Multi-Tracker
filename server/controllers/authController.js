@@ -3,6 +3,22 @@ const jwt = require('jsonwebtoken');
 
 const User = require('../models/User');
 
+function serializeUser(user) {
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    gender: user.gender,
+    pronouns: user.pronouns,
+    birthday: user.birthday,
+    xp: user.xp,
+    level: user.level,
+    coins: user.coins,
+    avatar: user.avatar,
+  };
+}
+
 function createToken(userId) {
   return jwt.sign({ userId }, process.env.JWT_SECRET, {
     expiresIn: '7d',
@@ -18,29 +34,16 @@ function setAuthCookie(res, token) {
   });
 }
 
+function clearAuthCookie(res) {
+  res.clearCookie('token', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+  });
+}
+
 async function register(req, res) {
-  try {
-    const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: 'Name, email, and password are required' });
-    }
-
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(409).json({ message: 'Email already in use' });
-    }
-
-    const user = await User.create({ name, email, password });
-    const token = createToken(user._id);
-    setAuthCookie(res, token);
-
-    return res.status(201).json({
-      user: { id: user._id, name: user.name, email: user.email },
-    });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error' });
-  }
+  return res.status(403).json({ message: 'Registration is managed by the admin account' });
 }
 
 async function login(req, res) {
@@ -64,7 +67,7 @@ async function login(req, res) {
     const token = createToken(user._id);
     setAuthCookie(res, token);
 
-    return res.status(200).json({ user: { id: user._id, name: user.name, email: user.email } });
+    return res.status(200).json({ user: serializeUser(user) });
   } catch (error) {
     return res.status(500).json({ message: 'Server error' });
   }
@@ -72,10 +75,15 @@ async function login(req, res) {
 
 async function me(req, res) {
   try {
-    return res.status(200).json({ user: req.user });
+    return res.status(200).json({ user: serializeUser(req.user) });
   } catch (error) {
     return res.status(500).json({ message: 'Server error' });
   }
 }
 
-module.exports = { register, login, me };
+async function logout(req, res) {
+  clearAuthCookie(res);
+  return res.status(200).json({ message: 'Logged out successfully' });
+}
+
+module.exports = { login, logout, me, register };

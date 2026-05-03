@@ -37,7 +37,9 @@ function Login() {
         throw new Error(data.message || 'Failed to login');
       }
 
-      navigate('/dashboard');
+      const data = await response.json();
+
+      navigate(data.user?.role === 'admin' ? '/admin' : '/dashboard');
     } catch (submitError) {
       setError(submitError.message);
     } finally {

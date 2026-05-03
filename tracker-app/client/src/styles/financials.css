@@ -1,0 +1,727 @@
+.financials-shell {
+  background:
+    linear-gradient(135deg, rgba(223, 242, 255, 0.92), rgba(248, 252, 255, 0.7) 42%, rgba(232, 251, 245, 0.74)),
+    var(--page-bg);
+}
+
+:root[data-theme='dark'] .financials-shell {
+  background:
+    linear-gradient(135deg, rgba(11, 30, 54, 0.98), rgba(9, 17, 31, 0.94) 48%, rgba(17, 52, 48, 0.84)),
+    var(--page-bg);
+}
+
+.financials-main {
+  width: min(1280px, 100%);
+}
+
+.nav-button {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.finance-hero {
+  min-height: 250px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 28px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(229, 246, 255, 0.62)),
+    var(--surface);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(24px);
+}
+
+:root[data-theme='dark'] .finance-hero {
+  background:
+    linear-gradient(135deg, rgba(25, 46, 76, 0.82), rgba(13, 25, 43, 0.78)),
+    var(--surface);
+}
+
+.finance-hero h2 {
+  max-width: 780px;
+  margin: 8px 0 0;
+  font-size: clamp(2.1rem, 4.5vw, 4.25rem);
+  line-height: 1;
+}
+
+.finance-hero p:not(.eyebrow) {
+  max-width: 610px;
+  margin: 18px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.finance-hero-stat {
+  min-width: 230px;
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.finance-hero-stat svg,
+.goal-notes .panel-heading svg {
+  color: var(--success);
+}
+
+.finance-hero-stat span {
+  font-size: 2rem;
+  font-weight: 900;
+}
+
+.finance-hero-stat p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.finance-primary-action,
+.finance-submit,
+.goal-actions button,
+.note-action button,
+.task-complete-button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(135deg, #2563eb, #0f8f72);
+  font-weight: 900;
+}
+
+.finance-primary-action {
+  margin-top: 20px;
+  padding: 0 16px;
+}
+
+:root[data-theme='dark'] .finance-primary-action,
+:root[data-theme='dark'] .finance-submit,
+:root[data-theme='dark'] .goal-actions button,
+:root[data-theme='dark'] .note-action button,
+:root[data-theme='dark'] .task-complete-button {
+  color: #07111f;
+  background: linear-gradient(135deg, #9ed0ff, #5ee0bd);
+}
+
+.finance-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.finance-alerts {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.finance-alerts p {
+  margin: 0;
+  font-weight: 800;
+}
+
+.success-text {
+  color: var(--success);
+}
+
+.error-text {
+  color: #c2410c;
+}
+
+.finance-panel,
+.goal-card,
+.empty-goals,
+.goal-detail-hero {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 16px 42px rgba(28, 72, 121, 0.08);
+  backdrop-filter: blur(20px);
+}
+
+.finance-panel {
+  padding: 20px;
+}
+
+.create-goal-panel {
+  margin: 0;
+}
+
+.create-goal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(7, 17, 31, 0.36);
+  backdrop-filter: blur(10px);
+}
+
+:root[data-theme='dark'] .create-goal-modal-overlay {
+  background: rgba(2, 8, 18, 0.62);
+}
+
+.create-goal-modal {
+  width: min(900px, 100%);
+  max-height: min(860px, calc(100vh - 48px));
+  overflow: auto;
+  animation: modal-enter 160ms ease-out;
+}
+
+.modal-heading {
+  position: sticky;
+  top: -20px;
+  z-index: 2;
+  margin: -20px -20px 0;
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-strong);
+  backdrop-filter: blur(18px);
+}
+
+.icon-button {
+  width: 38px;
+  height: 38px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-strong);
+}
+
+.icon-button:hover {
+  color: var(--accent-strong);
+  background: var(--surface-muted);
+}
+
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.finance-panel h3,
+.goal-card h3,
+.goal-detail-hero h2,
+.goal-task-list h4,
+.goal-notes h4,
+.task-builder h4 {
+  margin: 0;
+}
+
+.ghost-button,
+.back-button,
+.task-undo-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-strong);
+  font-weight: 800;
+}
+
+.ghost-button:hover,
+.back-button:hover,
+.task-undo-button:hover {
+  color: var(--accent-strong);
+  background: var(--surface-muted);
+}
+
+.goal-type-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.type-option {
+  min-height: 116px;
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-strong);
+  text-align: left;
+}
+
+.type-option svg {
+  color: var(--accent-strong);
+}
+
+.type-option span {
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.type-option small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.type-option.selected {
+  border-color: rgba(15, 143, 114, 0.42);
+  background: rgba(15, 143, 114, 0.12);
+}
+
+.finance-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.finance-form label {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.finance-form input,
+.finance-form textarea,
+.finance-form select,
+.goal-actions input,
+.note-action input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-strong);
+  font: inherit;
+}
+
+.finance-form textarea {
+  resize: vertical;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.task-builder {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.task-builder .panel-heading {
+  align-items: center;
+}
+
+.task-builder .panel-heading span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.task-builder-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 105px 70px 70px;
+  gap: 8px;
+}
+
+.finance-submit:disabled {
+  opacity: 0.62;
+}
+
+.goal-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.goal-card {
+  padding: 18px;
+}
+
+.goal-summary-card {
+  color: var(--text);
+  text-align: left;
+}
+
+.goal-summary-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(37, 99, 235, 0.38);
+}
+
+.goal-card-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.goal-card h3 {
+  margin-top: 10px;
+  font-size: 1.35rem;
+}
+
+.goal-card p,
+.goal-detail-hero p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.goal-type {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.goal-type.shared {
+  color: var(--success);
+  background: rgba(15, 143, 114, 0.14);
+}
+
+.progress-ring {
+  width: 86px;
+  height: 86px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background:
+    conic-gradient(var(--accent) var(--progress), rgba(122, 169, 216, 0.22) 0),
+    var(--surface-strong);
+}
+
+.progress-ring span {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  font-weight: 900;
+}
+
+.love-meter {
+  width: 112px;
+  height: 46px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 85, 125, 0.12);
+}
+
+.love-meter span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(135deg, #ff5c8a, #0f8f72);
+}
+
+.love-meter strong {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+}
+
+.vault-meter {
+  width: 78px;
+  height: 86px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.vault-fill {
+  position: absolute;
+  inset: auto 0 0;
+  background: linear-gradient(180deg, #9ed0ff, #0f8f72);
+}
+
+.vault-meter svg {
+  position: relative;
+  z-index: 1;
+  color: var(--accent-strong);
+}
+
+.goal-money-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.goal-money-row strong {
+  font-size: 1.6rem;
+}
+
+.goal-money-row span {
+  color: var(--muted);
+}
+
+.goal-progress-track {
+  height: 10px;
+  overflow: hidden;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.goal-progress-track.large {
+  height: 14px;
+  margin-top: 18px;
+}
+
+.goal-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #2563eb, #0f8f72);
+}
+
+.goal-card-footer,
+.detail-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.goal-card-footer span,
+.detail-meta-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.goal-card-footer strong {
+  color: var(--accent-strong);
+}
+
+.empty-goals {
+  grid-column: 1 / -1;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  min-height: 280px;
+  padding: 28px;
+  text-align: center;
+}
+
+.empty-goals svg {
+  color: var(--accent-strong);
+}
+
+.empty-goals h3,
+.empty-goals p {
+  margin: 0;
+}
+
+.empty-goals p {
+  color: var(--muted);
+}
+
+.goal-detail {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.back-button {
+  justify-self: start;
+}
+
+.goal-detail-hero {
+  min-height: 210px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  padding: 28px;
+}
+
+.goal-detail-hero h2 {
+  margin-top: 10px;
+  font-size: clamp(2rem, 4vw, 3.65rem);
+  line-height: 1;
+}
+
+.goal-detail-hero p {
+  max-width: 700px;
+}
+
+.goal-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+}
+
+.goal-detail-grid .goal-notes {
+  grid-column: 1 / -1;
+}
+
+.progress-panel .panel-heading h3 {
+  font-size: 2rem;
+}
+
+.goal-actions,
+.note-action {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.goal-task-list,
+.goal-notes {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.goal-task {
+  width: 100%;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-strong);
+  text-align: left;
+}
+
+.goal-task.complete {
+  color: var(--success);
+  background: rgba(15, 143, 114, 0.1);
+}
+
+.goal-task small {
+  color: var(--muted);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.task-complete-button,
+.task-undo-button {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.note-list {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.note-list p,
+.muted-text {
+  margin: 0;
+  color: var(--muted);
+}
+
+.note-list p {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+@media (max-width: 1060px) {
+  .finance-hero,
+  .goal-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .finance-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 820px) {
+  .goal-board,
+  .goal-detail-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .goal-detail-hero {
+    align-items: start;
+  }
+}
+
+@media (max-width: 720px) {
+  .finance-summary,
+  .goal-card-top,
+  .goal-actions,
+  .note-action,
+  .task-builder-row,
+  .form-row,
+  .goal-type-picker,
+  .goal-task {
+    grid-template-columns: 1fr;
+  }
+
+  .finance-hero-stat {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .goal-task small {
+    white-space: normal;
+  }
+
+  .task-complete-button,
+  .task-undo-button {
+    width: 100%;
+  }
+}

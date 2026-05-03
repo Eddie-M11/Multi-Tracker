@@ -1,19 +1,27 @@
+require('dotenv').config();
+
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const cors = require('cors');
 
 const connectDB = require('./config/db');
+const adminRoutes = require('./routes/adminRoutes');
 const authRoutes = require('./routes/authRoutes');
+const goalRoutes = require('./routes/goalRoutes');
 const relationshipRoutes = require('./routes/relationshipRoutes');
 
 const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
+app.use(cors({ credentials: true }));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/goals', goalRoutes);
 app.use('/api/relationship', relationshipRoutes);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 
 connectDB()
   .then(() => {

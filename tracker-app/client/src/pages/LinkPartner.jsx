@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import '../styles/linkPartner.css';
 
@@ -67,6 +68,7 @@ function LinkPartner() {
   return (
     <main className="link-page">
       <section className="link-card">
+        <Link to="/dashboard" className="back-link">Back to dashboard</Link>
         <h1>Link Your Partner</h1>
 
         <button type="button" className="primary-btn" onClick={handleCreateInvite} disabled={loadingCreate}>

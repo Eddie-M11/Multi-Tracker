@@ -4,7 +4,15 @@
   justify-content: center;
   align-items: center;
   padding: 1rem;
-  background: #f3f6ff;
+  background:
+    linear-gradient(135deg, rgba(219, 238, 255, 0.92), rgba(248, 252, 255, 0.72) 48%, rgba(229, 247, 248, 0.78)),
+    var(--page-bg);
+}
+
+:root[data-theme='dark'] .link-page {
+  background:
+    linear-gradient(135deg, rgba(12, 28, 50, 0.98), rgba(9, 17, 31, 0.94) 48%, rgba(21, 45, 57, 0.88)),
+    var(--page-bg);
 }
 
 .link-card {
@@ -13,10 +21,19 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  background: #fff;
-  border-radius: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   padding: 1.25rem;
-  box-shadow: 0 8px 24px rgba(26, 32, 44, 0.08);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(22px);
+}
+
+.back-link {
+  color: var(--accent-strong);
+  font-weight: 800;
+  text-decoration: none;
 }
 
 .join-form {
@@ -27,8 +44,10 @@
 
 .join-form input {
   padding: 0.65rem 0.75rem;
-  border: 1px solid #cbd5e0;
+  border: 1px solid var(--border);
   border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-strong);
   font-size: 1rem;
 }
 
@@ -36,9 +55,14 @@
   padding: 0.75rem;
   border: none;
   border-radius: 8px;
-  background: #4c51bf;
+  background: linear-gradient(135deg, #2563eb, #0f8f72);
   color: #fff;
   font-weight: 600;
+}
+
+:root[data-theme='dark'] .primary-btn {
+  color: #07111f;
+  background: linear-gradient(135deg, #9ed0ff, #5ee0bd);
 }
 
 .primary-btn:disabled {
@@ -47,14 +71,14 @@
 
 .invite-display {
   margin: 0;
-  background: #edf2f7;
+  background: var(--surface-muted);
   border-radius: 8px;
   padding: 0.75rem;
 }
 
 .success-text {
   margin: 0;
-  color: #2f855a;
+  color: var(--success);
 }
 
 .error-text {
