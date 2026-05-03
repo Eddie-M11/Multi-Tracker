@@ -1,6 +1,8 @@
 # Dependencies (root + nested workspaces)
 node_modules/
 **/node_modules/
+# Dependencies
+node_modules/
 
 # Environment variables
 .env
@@ -26,6 +28,8 @@ pids
 # Build outputs
 build/
 dist/
+dist/
+build/
 coverage/
 .next/
 out/
