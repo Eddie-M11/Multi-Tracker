@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import AdminDashboard from './pages/AdminDashboard.jsx';
+import Banking from './pages/Banking.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Financials from './pages/Financials.jsx';
 import LinkPartner from './pages/LinkPartner.jsx';
@@ -29,6 +30,7 @@ function App() {
       <Route path="/link-partner" element={<LinkPartner />} />
       <Route path="/dashboard" element={<Dashboard theme={theme} onToggleTheme={toggleTheme} />} />
       <Route path="/financials" element={<Financials theme={theme} onToggleTheme={toggleTheme} />} />
+      <Route path="/banking" element={<Banking theme={theme} onToggleTheme={toggleTheme} />} />
     </Routes>
   );
 }

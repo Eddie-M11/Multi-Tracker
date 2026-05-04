@@ -2,6 +2,7 @@ const OpenAI = require('openai');
 
 const Goal = require('../models/Goal');
 const User = require('../models/User');
+const { awardCoupleProgress } = require('../utils/coupleProgress');
 
 const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
 
@@ -58,10 +59,14 @@ function serializeGoal(goal) {
     visualType: goal.visualType,
     sharedXp: goal.sharedXp,
     sharedLevel: goal.sharedLevel,
+    sharedToDashboard: goal.visibility === 'shared' || Boolean(goal.sharedToDashboard),
+    sharedAt: goal.sharedAt,
+    sharedBy: goal.sharedBy,
     status: goal.status,
     progress,
     tasks: goal.tasks,
     notes: goal.notes,
+    contributions: goal.contributions,
     createdAt: goal.createdAt,
     updatedAt: goal.updatedAt,
   };
@@ -127,11 +132,14 @@ async function createGoal(req, res) {
       visualType = 'ring',
       tasks = [],
       note = '',
+      sharedToDashboard = false,
     } = req.body;
 
     if (!title || !visibility || targetAmount === undefined) {
       return res.status(400).json({ message: 'Title, visibility, and target amount are required' });
     }
+
+    const shouldShareToDashboard = visibility === 'shared' || sharedToDashboard === true || sharedToDashboard === 'true';
 
     const goal = await Goal.create({
       title,
@@ -142,6 +150,9 @@ async function createGoal(req, res) {
       currentAmount,
       dueDate: dueDate || null,
       visualType,
+      sharedToDashboard: shouldShareToDashboard,
+      sharedAt: shouldShareToDashboard ? new Date() : null,
+      sharedBy: shouldShareToDashboard ? req.user._id : null,
       tasks: tasks
         .filter((task) => task.title)
         .map(normalizeTaskInput),
@@ -269,16 +280,17 @@ async function addContribution(req, res) {
 
     goal.currentAmount += Number(amount);
 
-    if (note) {
-      goal.notes.push({
-        authorId: req.user._id,
-        authorName: req.user.name,
-        text: note,
-      });
-    }
+    goal.contributions.push({
+      amount: Number(amount),
+      note,
+      authorId: req.user._id,
+      authorName: req.user.name,
+      balanceAfter: goal.currentAmount,
+    });
 
     const xp = 10;
     const coins = 2;
+    const earnsCoupleProgress = goal.visibility === 'shared' || goal.sharedToDashboard;
     await awardUser(req.user._id, xp, coins);
 
     if (goal.visibility === 'shared') {
@@ -288,7 +300,36 @@ async function addContribution(req, res) {
     syncGoalStatus(goal);
     await goal.save();
 
+    if (earnsCoupleProgress) {
+      await awardCoupleProgress(req.user, {
+        xp,
+        coins,
+        type: 'goal_contribution',
+        title: `Progress logged for ${goal.title}`,
+        metadata: { goalId: goal._id, amount: Number(amount) },
+      });
+    }
+
     return res.status(200).json({ goal: serializeGoal(goal), rewards: { xp, coins } });
+  } catch (error) {
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function addTask(req, res) {
+  try {
+    const goal = await Goal.findById(req.params.goalId);
+    const taskInput = normalizeTaskInput(req.body || {});
+
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
+    if (!canAccessGoal(req.user, goal)) return res.status(403).json({ message: 'Access denied' });
+    if (!taskInput.title) return res.status(400).json({ message: 'Task title is required' });
+
+    goal.tasks.push(taskInput);
+    syncGoalStatus(goal);
+    await goal.save();
+
+    return res.status(201).json({ goal: serializeGoal(goal) });
   } catch (error) {
     return res.status(500).json({ message: 'Server error' });
   }
@@ -308,6 +349,7 @@ async function completeTask(req, res) {
     task.completed = true;
     task.completedBy = req.user._id;
     task.completedAt = new Date();
+    const earnsCoupleProgress = goal.visibility === 'shared' || goal.sharedToDashboard;
 
     await awardUser(req.user._id, task.xp, task.coins);
 
@@ -317,6 +359,16 @@ async function completeTask(req, res) {
 
     syncGoalStatus(goal);
     await goal.save();
+
+    if (earnsCoupleProgress) {
+      await awardCoupleProgress(req.user, {
+        xp: task.xp,
+        coins: task.coins,
+        type: 'goal_task',
+        title: `Completed ${task.title}`,
+        metadata: { goalId: goal._id, taskId: task._id, goalTitle: goal.title },
+      });
+    }
 
     return res.status(200).json({ goal: serializeGoal(goal), rewards: { xp: task.xp, coins: task.coins } });
   } catch (error) {
@@ -336,6 +388,7 @@ async function undoTask(req, res) {
     if (!task.completed) return res.status(400).json({ message: 'Task is not complete' });
 
     const completedBy = task.completedBy;
+    const earnsCoupleProgress = goal.visibility === 'shared' || goal.sharedToDashboard;
 
     task.completed = false;
     task.completedBy = null;
@@ -351,6 +404,16 @@ async function undoTask(req, res) {
 
     syncGoalStatus(goal);
     await goal.save();
+
+    if (earnsCoupleProgress) {
+      await awardCoupleProgress(req.user, {
+        xp: -task.xp,
+        coins: -task.coins,
+        type: 'goal_task_undo',
+        title: `Reopened ${task.title}`,
+        metadata: { goalId: goal._id, taskId: task._id, goalTitle: goal.title },
+      });
+    }
 
     return res.status(200).json({ goal: serializeGoal(goal), rewards: { xp: -task.xp, coins: -task.coins } });
   } catch (error) {
@@ -381,12 +444,71 @@ async function addNote(req, res) {
   }
 }
 
+async function deleteGoal(req, res) {
+  try {
+    const goal = await Goal.findById(req.params.goalId);
+
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
+    if (req.user.role !== 'admin' && goal.ownerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Only the owner can delete this goal' });
+    }
+
+    await goal.deleteOne();
+
+    return res.status(200).json({ goalId: req.params.goalId });
+  } catch (error) {
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function updateDashboardShare(req, res) {
+  try {
+    const { sharedToDashboard } = req.body;
+    const goal = await Goal.findById(req.params.goalId);
+
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
+    if (goal.ownerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Only the owner can change dashboard sharing' });
+    }
+
+    if (goal.visibility === 'shared' && sharedToDashboard === false) {
+      return res.status(400).json({ message: 'Shared goals always appear on the couple dashboard' });
+    }
+
+    const nextValue = goal.visibility === 'shared' ? true : Boolean(sharedToDashboard);
+    const wasShared = goal.visibility === 'shared' || goal.sharedToDashboard;
+
+    goal.sharedToDashboard = nextValue;
+    goal.sharedAt = nextValue ? goal.sharedAt || new Date() : null;
+    goal.sharedBy = nextValue ? goal.sharedBy || req.user._id : null;
+
+    await goal.save();
+
+    if (nextValue && !wasShared) {
+      await awardCoupleProgress(req.user, {
+        xp: 0,
+        coins: 0,
+        type: 'share_goal',
+        title: `Shared ${goal.title}`,
+        metadata: { goalId: goal._id },
+      });
+    }
+
+    return res.status(200).json({ goal: serializeGoal(goal) });
+  } catch (error) {
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   addContribution,
   addNote,
+  addTask,
   completeTask,
   createGoal,
+  deleteGoal,
   listGoals,
   suggestTasks,
+  updateDashboardShare,
   undoTask,
 };

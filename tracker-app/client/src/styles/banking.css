@@ -1,0 +1,563 @@
+.banking-shell {
+  background:
+    radial-gradient(circle at 100% 100%, rgba(15, 143, 114, 0.12), transparent 38%),
+    linear-gradient(135deg, rgba(223, 242, 255, 0.92), rgba(248, 252, 255, 0.74) 46%, rgba(232, 251, 245, 0.78)),
+    var(--page-bg);
+}
+
+:root[data-theme='dark'] .banking-shell {
+  background:
+    radial-gradient(circle at 100% 100%, rgba(15, 143, 114, 0.2), transparent 38%),
+    linear-gradient(135deg, rgba(11, 30, 54, 0.98), rgba(9, 17, 31, 0.94) 48%, rgba(13, 43, 50, 0.9)),
+    var(--page-bg);
+}
+
+.banking-main {
+  width: min(1440px, 100%);
+}
+
+.banking-sidebar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.banking-nav {
+  gap: 10px;
+  margin-top: 44px;
+}
+
+.banking-nav-item {
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 14px;
+}
+
+.banking-nav-item svg {
+  flex: 0 0 auto;
+}
+
+.banking-nav-item.active {
+  box-shadow: inset 3px 0 0 var(--accent-strong);
+}
+
+.banking-sidebar-bottom {
+  display: grid;
+  gap: 10px;
+}
+
+.banking-sidebar-action {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 800;
+}
+
+.banking-sidebar-action:hover {
+  color: var(--accent-strong);
+  border-color: var(--border);
+  background: var(--surface-muted);
+}
+
+.banking-onboarding {
+  max-width: 940px;
+  margin-top: 28px;
+}
+
+.banking-form {
+  gap: 12px;
+}
+
+.compact-form-row {
+  gap: 8px;
+}
+
+.banking-hero,
+.banking-pay-card,
+.banking-plaid-panel,
+.banking-large-panel {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(229, 246, 255, 0.72)),
+    var(--surface);
+}
+
+:root[data-theme='dark'] .banking-hero,
+:root[data-theme='dark'] .banking-pay-card,
+:root[data-theme='dark'] .banking-plaid-panel,
+:root[data-theme='dark'] .banking-large-panel {
+  background:
+    linear-gradient(135deg, rgba(10, 42, 70, 0.72), rgba(13, 31, 53, 0.7)),
+    var(--surface);
+}
+
+.banking-hero {
+  min-height: 160px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  align-items: stretch;
+  gap: 22px;
+  margin-top: 24px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(24px);
+}
+
+.banking-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  align-items: center;
+}
+
+.banking-snapshot-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.banking-snapshot-card div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.banking-snapshot-card small,
+.banking-snapshot-card em,
+.banking-hero-status p,
+.banking-table-header,
+.banking-account-row small {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.banking-snapshot-card small,
+.banking-table-header,
+.banking-account-row small {
+  font-size: 0.82rem;
+}
+
+.banking-snapshot-card strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: clamp(1.25rem, 1.8vw, 1.75rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.banking-snapshot-card em {
+  color: var(--success);
+  font-size: 0.86rem;
+}
+
+.banking-snapshot-card:nth-child(3) em,
+.credit-row div:nth-child(4) small {
+  color: #f43f5e;
+}
+
+.banking-snapshot-icon {
+  width: 48px;
+  height: 48px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.banking-snapshot-icon.blue {
+  color: #7aa9d8;
+  background: rgba(37, 99, 235, 0.22);
+}
+
+.banking-snapshot-icon.green {
+  color: var(--success);
+  background: rgba(15, 143, 114, 0.18);
+}
+
+.banking-snapshot-icon.rose {
+  color: #f43f5e;
+  background: rgba(244, 63, 94, 0.18);
+}
+
+.banking-hero-status {
+  display: grid;
+  align-content: center;
+  gap: 12px;
+  padding-left: 22px;
+  border-left: 1px solid rgba(122, 169, 216, 0.2);
+}
+
+.banking-hero-status > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.banking-live-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--success);
+  box-shadow: 0 0 0 4px rgba(15, 143, 114, 0.12);
+}
+
+.banking-hero-status p {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.banking-hero-status p span {
+  color: var(--muted);
+}
+
+.banking-hero-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.banking-hero-actions .finance-primary-action,
+.banking-hero-actions .finance-secondary-action {
+  margin-top: 0;
+  padding: 0 16px;
+}
+
+.banking-support-grid,
+.banking-account-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.banking-pay-card,
+.banking-plaid-panel,
+.banking-large-panel {
+  min-width: 0;
+}
+
+.banking-pay-card {
+  min-height: 142px;
+}
+
+.banking-plaid-panel {
+  min-height: 142px;
+}
+
+.banking-large-panel {
+  min-height: 320px;
+}
+
+.banking-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.banking-panel-title h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.banking-panel-title > .ghost-button,
+.banking-panel-title > .icon-button {
+  margin-left: auto;
+}
+
+.banking-count-pill {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--surface-strong);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.pay-schedule-grid,
+.plaid-status-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.pay-schedule-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.plaid-status-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pay-schedule-grid span,
+.plaid-status-list span {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 0 12px;
+  border-left: 1px solid rgba(122, 169, 216, 0.16);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.pay-schedule-grid span:first-child,
+.plaid-status-list span:first-child {
+  padding-left: 0;
+  border-left: none;
+}
+
+.pay-schedule-grid strong,
+.plaid-status-list strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.banking-pay-card .ghost-button {
+  min-height: 38px;
+}
+
+.banking-account-table {
+  display: grid;
+  margin-top: 18px;
+}
+
+.cash-table,
+.credit-table {
+  gap: 0;
+}
+
+.banking-table-header,
+.banking-account-row {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+}
+
+.cash-row {
+  grid-template-columns: minmax(220px, 1.5fr) minmax(90px, 0.65fr) minmax(110px, 0.75fr) minmax(100px, 0.65fr) minmax(100px, 0.65fr) 28px;
+}
+
+.credit-row {
+  grid-template-columns: minmax(240px, 1.6fr) minmax(100px, 0.7fr) minmax(100px, 0.7fr) minmax(110px, 0.8fr) 28px;
+}
+
+.banking-table-header {
+  min-height: 38px;
+  padding: 0 10px;
+  border-bottom: 1px solid rgba(122, 169, 216, 0.16);
+}
+
+.banking-account-row {
+  min-height: 76px;
+  padding: 12px 10px;
+  border-bottom: 1px solid rgba(122, 169, 216, 0.12);
+}
+
+.banking-account-row:last-child {
+  border-bottom: none;
+}
+
+.banking-account-row div {
+  min-width: 0;
+}
+
+.banking-account-row strong,
+.banking-account-row small {
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-name-cell {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-name-cell > div {
+  min-width: 0;
+}
+
+.banking-account-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.credit-icon {
+  color: #f43f5e;
+  background: rgba(244, 63, 94, 0.18);
+}
+
+.institution-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.institution-cell span {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #07111f;
+  background: linear-gradient(135deg, #7aa9d8, #5ee0bd);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.banking-row-action {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.banking-row-action:hover {
+  color: var(--accent-strong);
+  background: var(--surface-muted);
+}
+
+.banking-empty-state {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: 28px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.banking-empty-state p {
+  margin: 0;
+  font-weight: 800;
+}
+
+.finance-primary-action:disabled,
+.finance-secondary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 1320px) {
+  .banking-hero,
+  .banking-support-grid,
+  .banking-account-panels {
+    grid-template-columns: 1fr;
+  }
+
+  .banking-hero-status {
+    padding: 18px 0 0;
+    border-top: 1px solid rgba(122, 169, 216, 0.2);
+    border-left: none;
+  }
+}
+
+@media (max-width: 1060px) {
+  .banking-snapshot-grid,
+  .pay-schedule-grid,
+  .plaid-status-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cash-row,
+  .credit-row {
+    grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(90px, 0.8fr)) 28px;
+  }
+
+  .cash-row > :nth-child(3),
+  .cash-row > :nth-child(5),
+  .credit-row > :nth-child(5) {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .banking-sidebar {
+    min-height: auto;
+    flex-direction: row;
+  }
+
+  .banking-sidebar-bottom {
+    grid-template-columns: repeat(2, auto);
+  }
+
+  .banking-sidebar-action {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 720px) {
+  .banking-snapshot-grid,
+  .pay-schedule-grid,
+  .plaid-status-list {
+    grid-template-columns: 1fr;
+  }
+
+  .banking-hero {
+    min-height: 0;
+    padding: 20px;
+  }
+
+  .banking-hero-actions,
+  .banking-hero-actions .finance-primary-action,
+  .banking-hero-actions .finance-secondary-action {
+    width: 100%;
+  }
+
+  .cash-row,
+  .credit-row {
+    grid-template-columns: minmax(0, 1fr) 28px;
+  }
+
+  .cash-row > :nth-child(n + 2):not(:last-child),
+  .credit-row > :nth-child(n + 2):not(:last-child),
+  .banking-table-header {
+    display: none;
+  }
+
+  .banking-sidebar {
+    flex-direction: column;
+  }
+
+  .banking-sidebar-bottom {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+}

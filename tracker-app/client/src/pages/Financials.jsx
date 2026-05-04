@@ -3,16 +3,21 @@ import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
+  ChevronRight,
+  CircleDollarSign,
   Coins,
   CreditCard,
-  Heart,
+  LayoutDashboard,
+  Landmark,
   LogOut,
   MessageSquare,
   Moon,
   PiggyBank,
   Plus,
   RotateCcw,
+  Share2,
   Sparkles,
+  Star,
   Sun,
   Target,
   Trash2,
@@ -22,6 +27,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import '../styles/banking.css';
 import '../styles/financials.css';
 
 const initialGoalForm = {
@@ -33,9 +39,17 @@ const initialGoalForm = {
   dueDate: '',
   visualType: 'ring',
   note: '',
+  sharedToDashboard: false,
 };
 
 const initialCreditCardForm = {
+  linkedBankingAccountId: '',
+  linkedPlaidAccountId: '',
+  linkedInstitutionName: '',
+  linkedAccountMask: '',
+  balanceSource: 'manual',
+  balanceSyncedAt: '',
+  sharedToDashboard: false,
   cardName: '',
   bank: '',
   openDate: '',
@@ -74,6 +88,11 @@ function formatMoney(value) {
   }).format(value || 0);
 }
 
+function formatOptionalMoney(value) {
+  if (value === null || value === undefined || value === '') return 'Not provided';
+  return formatMoney(value);
+}
+
 function formatDate(value) {
   if (!value) return 'No due date';
 
@@ -84,12 +103,51 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function formatRelativeTime(value) {
+  if (!value) return 'Not synced';
+
+  const diffMs = Date.now() - new Date(value).getTime();
+  const minutes = Math.max(0, Math.round(diffMs / 60000));
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatDateDistance(value) {
+  if (!value) return 'No date set';
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const targetDate = new Date(value);
+  targetDate.setHours(0, 0, 0, 0);
+
+  const days = Math.round((targetDate - today) / 86400000);
+
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  if (days > 1) return `In ${days} days`;
+  if (days === -1) return 'Yesterday';
+  return `${Math.abs(days)} days ago`;
+}
+
 function getTaskReward(difficulty) {
   return taskRewards[difficulty] || taskRewards.easy;
 }
 
 function formatPercent(value) {
   return `${Number(value || 0).toFixed(2).replace(/\.00$/, '')}%`;
+}
+
+function formatOptionalPercent(value) {
+  if (value === null || value === undefined || value === '') return 'Manual entry';
+  return formatPercent(value);
 }
 
 function formatOrdinal(number) {
@@ -104,6 +162,30 @@ function toMoneyNumber(value) {
   const numberValue = Number(value || 0);
   if (!Number.isFinite(numberValue)) return 0;
   return Math.max(0, Math.round(numberValue * 100) / 100);
+}
+
+function getDateDay(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return String(date.getUTCDate());
+}
+
+function getCreditCardLabel(account) {
+  const name = account.officialName || account.name || 'Credit card';
+  const mask = account.mask ? `...${account.mask}` : '';
+  return [name, mask].filter(Boolean).join(' ');
+}
+
+function formatAprType(value) {
+  const labels = {
+    balance_transfer_apr: 'Balance transfer',
+    cash_apr: 'Cash advance',
+    purchase_apr: 'Purchase',
+    special: 'Special',
+  };
+
+  return labels[value] || 'APR';
 }
 
 function addMonths(date, months) {
@@ -248,8 +330,11 @@ function Financials({ theme, onToggleTheme }) {
   const [user, setUser] = useState(null);
   const [goals, setGoals] = useState([]);
   const [creditCardPlans, setCreditCardPlans] = useState([]);
+  const [bankingAccounts, setBankingAccounts] = useState([]);
   const [selectedGoalId, setSelectedGoalId] = useState(null);
   const [selectedCreditCardPlanId, setSelectedCreditCardPlanId] = useState(null);
+  const [focusedGoalId, setFocusedGoalId] = useState(() => localStorage.getItem('tracker:focused-goal-id') || '');
+  const [focusedDebtPlanId, setFocusedDebtPlanId] = useState(() => localStorage.getItem('tracker:focused-debt-plan-id') || '');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreditCardOpen, setIsCreditCardOpen] = useState(false);
   const [goalForm, setGoalForm] = useState(initialGoalForm);
@@ -257,6 +342,7 @@ function Financials({ theme, onToggleTheme }) {
   const [tasks, setTasks] = useState(initialTasks);
   const [contributions, setContributions] = useState({});
   const [notes, setNotes] = useState({});
+  const [newGoalTasks, setNewGoalTasks] = useState({});
   const [creditPayments, setCreditPayments] = useState({});
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -300,11 +386,58 @@ function Financials({ theme, onToggleTheme }) {
     [creditCardForm]
   );
 
+  const bankingCreditCards = useMemo(() => {
+    return bankingAccounts
+      .filter((account) => account.accountCategory === 'credit-card' && account.status !== 'hidden')
+      .sort((firstAccount, secondAccount) => (
+        getCreditCardLabel(firstAccount).localeCompare(getCreditCardLabel(secondAccount))
+      ));
+  }, [bankingAccounts]);
+
+  const selectedBankingCreditCard = useMemo(() => {
+    return bankingCreditCards.find((account) => account.id === creditCardForm.linkedBankingAccountId) || null;
+  }, [bankingCreditCards, creditCardForm.linkedBankingAccountId]);
+
+  const overallGoalProgress = totals.target > 0
+    ? Math.min(Math.round((totals.current / totals.target) * 100), 100)
+    : 0;
+
+  const nextGoalDue = useMemo(() => {
+    return goals
+      .filter((goal) => goal.dueDate && goal.status !== 'completed')
+      .slice()
+      .sort((firstGoal, secondGoal) => new Date(firstGoal.dueDate) - new Date(secondGoal.dueDate))[0] || null;
+  }, [goals]);
+
+  const automaticGoalFocus = useMemo(() => {
+    return goals
+      .slice()
+      .sort((firstGoal, secondGoal) => {
+        if (secondGoal.progress !== firstGoal.progress) return secondGoal.progress - firstGoal.progress;
+        return new Date(firstGoal.dueDate || '9999-12-31') - new Date(secondGoal.dueDate || '9999-12-31');
+      })[0] || null;
+  }, [goals]);
+
+  const automaticDebtFocus = useMemo(() => {
+    return creditCardPlans
+      .slice()
+      .sort((firstPlan, secondPlan) => secondPlan.totalBalance - firstPlan.totalBalance)[0] || null;
+  }, [creditCardPlans]);
+
+  const goalFocus = useMemo(() => {
+    return goals.find((goal) => goal.id === focusedGoalId) || automaticGoalFocus;
+  }, [automaticGoalFocus, focusedGoalId, goals]);
+
+  const debtFocus = useMemo(() => {
+    return creditCardPlans.find((plan) => plan.id === focusedDebtPlanId) || automaticDebtFocus;
+  }, [automaticDebtFocus, creditCardPlans, focusedDebtPlanId]);
+
   async function loadFinancials() {
-    const [meResponse, goalsResponse, creditPlansResponse] = await Promise.all([
+    const [meResponse, goalsResponse, creditPlansResponse, bankingResponse] = await Promise.all([
       fetch('/api/auth/me', { credentials: 'include' }),
       fetch('/api/goals', { credentials: 'include' }),
       fetch('/api/credit-card-plans', { credentials: 'include' }),
+      fetch('/api/banking', { credentials: 'include' }),
     ]);
 
     if (!meResponse.ok) {
@@ -323,10 +456,12 @@ function Financials({ theme, onToggleTheme }) {
     const meData = await meResponse.json();
     const goalsData = await goalsResponse.json();
     const creditPlansData = await creditPlansResponse.json();
+    const bankingData = bankingResponse.ok ? await bankingResponse.json() : { profile: { accounts: [] } };
 
     setUser(meData.user);
     setGoals(goalsData.goals || []);
     setCreditCardPlans(creditPlansData.plans || []);
+    setBankingAccounts(bankingData.profile?.accounts || []);
   }
 
   useEffect(() => {
@@ -344,6 +479,34 @@ function Financials({ theme, onToggleTheme }) {
       setSelectedCreditCardPlanId(null);
     }
   }, [selectedCreditCardPlan, selectedCreditCardPlanId]);
+
+  useEffect(() => {
+    if (focusedGoalId) {
+      localStorage.setItem('tracker:focused-goal-id', focusedGoalId);
+    } else {
+      localStorage.removeItem('tracker:focused-goal-id');
+    }
+  }, [focusedGoalId]);
+
+  useEffect(() => {
+    if (focusedDebtPlanId) {
+      localStorage.setItem('tracker:focused-debt-plan-id', focusedDebtPlanId);
+    } else {
+      localStorage.removeItem('tracker:focused-debt-plan-id');
+    }
+  }, [focusedDebtPlanId]);
+
+  useEffect(() => {
+    if (focusedGoalId && !goals.some((goal) => goal.id === focusedGoalId)) {
+      setFocusedGoalId('');
+    }
+  }, [focusedGoalId, goals]);
+
+  useEffect(() => {
+    if (focusedDebtPlanId && !creditCardPlans.some((plan) => plan.id === focusedDebtPlanId)) {
+      setFocusedDebtPlanId('');
+    }
+  }, [creditCardPlans, focusedDebtPlanId]);
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -366,15 +529,65 @@ function Financials({ theme, onToggleTheme }) {
   }, [isCreateOpen, isCreditCardOpen]);
 
   function handleGoalChange(event) {
-    const { name, value } = event.target;
-    setGoalForm((currentForm) => ({ ...currentForm, [name]: value }));
+    const { checked, name, type, value } = event.target;
+    setGoalForm((currentForm) => ({
+      ...currentForm,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
   }
 
   function handleCreditCardChange(event) {
     const { checked, name, type, value } = event.target;
+
+    if (name === 'linkedBankingAccountId') {
+      applyLinkedCreditCard(value);
+      return;
+    }
+
     setCreditCardForm((currentForm) => ({
       ...currentForm,
       [name]: type === 'checkbox' ? checked : value,
+    }));
+  }
+
+  function applyLinkedCreditCard(accountId) {
+    const linkedAccount = bankingCreditCards.find((account) => account.id === accountId);
+
+    if (!linkedAccount) {
+      setCreditCardForm((currentForm) => ({
+        ...currentForm,
+        linkedBankingAccountId: '',
+        linkedPlaidAccountId: '',
+        linkedInstitutionName: '',
+        linkedAccountMask: '',
+        balanceSource: 'manual',
+        balanceSyncedAt: '',
+      }));
+      return;
+    }
+
+    const balance = Math.max(0, toMoneyNumber(linkedAccount.currentBalance ?? linkedAccount.lastStatementBalance));
+    const minimumPayment = linkedAccount.minimumPaymentAmount ?? '';
+    const purchaseApr = linkedAccount.purchaseApr ?? '';
+
+    setCreditCardForm((currentForm) => ({
+      ...currentForm,
+      linkedBankingAccountId: linkedAccount.id,
+      linkedPlaidAccountId: linkedAccount.plaidAccountId || '',
+      linkedInstitutionName: linkedAccount.institutionName || '',
+      linkedAccountMask: linkedAccount.mask || '',
+      balanceSource: 'banking',
+      balanceSyncedAt: linkedAccount.lastSyncedAt || '',
+      cardName: linkedAccount.officialName || linkedAccount.name || currentForm.cardName,
+      bank: linkedAccount.institutionName || currentForm.bank,
+      purchaseBalance: balance ? String(balance) : currentForm.purchaseBalance,
+      minimumPayment: minimumPayment !== null && minimumPayment !== undefined && minimumPayment !== ''
+        ? String(minimumPayment)
+        : currentForm.minimumPayment,
+      purchaseApr: purchaseApr !== null && purchaseApr !== undefined && purchaseApr !== ''
+        ? String(purchaseApr)
+        : currentForm.purchaseApr,
+      monthlyDueDay: getDateDay(linkedAccount.nextPaymentDueDate) || currentForm.monthlyDueDay,
     }));
   }
 
@@ -426,7 +639,11 @@ function Financials({ theme, onToggleTheme }) {
   }
 
   function chooseGoalType(visibility) {
-    setGoalForm((currentForm) => ({ ...currentForm, visibility }));
+    setGoalForm((currentForm) => ({
+      ...currentForm,
+      visibility,
+      sharedToDashboard: visibility === 'shared' ? true : currentForm.sharedToDashboard,
+    }));
   }
 
   function upsertGoal(updatedGoal) {
@@ -439,6 +656,76 @@ function Financials({ theme, onToggleTheme }) {
     setCreditCardPlans((currentPlans) => currentPlans.map((plan) => (
       plan.id === updatedPlan.id ? updatedPlan : plan
     )));
+  }
+
+  function updateNewGoalTask(goalId, field, value) {
+    setNewGoalTasks((currentTasks) => ({
+      ...currentTasks,
+      [goalId]: {
+        title: '',
+        difficulty: 'easy',
+        ...currentTasks[goalId],
+        [field]: value,
+      },
+    }));
+  }
+
+  function ownsItem(item) {
+    return user?.id && item?.ownerId && String(item.ownerId) === String(user.id);
+  }
+
+  async function handleGoalDashboardShare(goal) {
+    if (goal.visibility === 'shared') return;
+
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await fetch(`/api/goals/${goal.id}/dashboard-share`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ sharedToDashboard: !goal.sharedToDashboard }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update dashboard sharing');
+      }
+
+      upsertGoal(data.goal);
+      setMessage(data.goal.sharedToDashboard ? `${data.goal.title} is shared to the dashboard.` : `${data.goal.title} is private again.`);
+    } catch (shareError) {
+      setError(shareError.message);
+    }
+  }
+
+  async function handlePlanDashboardShare(plan) {
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await fetch(`/api/credit-card-plans/${plan.id}/dashboard-share`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ sharedToDashboard: !plan.sharedToDashboard }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update dashboard sharing');
+      }
+
+      upsertCreditCardPlan(data.plan);
+      setMessage(data.plan.sharedToDashboard ? `${data.plan.cardName} is shared to the dashboard.` : `${data.plan.cardName} is private again.`);
+    } catch (shareError) {
+      setError(shareError.message);
+    }
   }
 
   async function handleLogout() {
@@ -627,6 +914,37 @@ function Financials({ theme, onToggleTheme }) {
     }
   }
 
+  async function handleAddGoalTask(goalId) {
+    const nextTask = newGoalTasks[goalId] || { title: '', difficulty: 'easy' };
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await fetch(`/api/goals/${goalId}/tasks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(nextTask),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to add task');
+      }
+
+      upsertGoal(data.goal);
+      setNewGoalTasks((currentTasks) => ({
+        ...currentTasks,
+        [goalId]: { title: '', difficulty: nextTask.difficulty || 'easy' },
+      }));
+      setMessage('Task added.');
+    } catch (taskError) {
+      setError(taskError.message);
+    }
+  }
+
   async function handleContribution(goalId) {
     const contribution = contributions[goalId] || {};
     setError('');
@@ -717,24 +1035,93 @@ function Financials({ theme, onToggleTheme }) {
     }
   }
 
+  async function handleDeleteGoal(goal) {
+    if (!window.confirm(`Delete "${goal.title}"? This cannot be undone.`)) return;
+
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await fetch(`/api/goals/${goal.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to delete goal');
+      }
+
+      setGoals((currentGoals) => currentGoals.filter((currentGoal) => currentGoal.id !== goal.id));
+      setSelectedGoalId(null);
+      setFocusedGoalId((currentFocus) => (currentFocus === goal.id ? '' : currentFocus));
+      setMessage(`Deleted ${goal.title}.`);
+    } catch (deleteError) {
+      setError(deleteError.message);
+    }
+  }
+
+  async function handleDeleteCreditCardPlan(plan) {
+    if (!window.confirm(`Delete "${plan.cardName}"? This cannot be undone.`)) return;
+
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await fetch(`/api/credit-card-plans/${plan.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to delete payoff plan');
+      }
+
+      setCreditCardPlans((currentPlans) => currentPlans.filter((currentPlan) => currentPlan.id !== plan.id));
+      setSelectedCreditCardPlanId(null);
+      setFocusedDebtPlanId((currentFocus) => (currentFocus === plan.id ? '' : currentFocus));
+      setMessage(`Deleted ${plan.cardName}.`);
+    } catch (deleteError) {
+      setError(deleteError.message);
+    }
+  }
+
   return (
     <main className="dashboard-shell financials-shell">
-      <aside className="dashboard-sidebar" aria-label="Financial navigation">
-        <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true">T</span>
-          <span>Tracker</span>
+      <aside className="dashboard-sidebar banking-sidebar" aria-label="Financial navigation">
+        <div>
+          <div className="brand-lockup">
+            <span className="brand-mark" aria-hidden="true">T</span>
+            <span>Tracker</span>
+          </div>
+
+          <nav className="dashboard-nav banking-nav">
+            <Link to="/dashboard" className="nav-item banking-nav-item">
+              <LayoutDashboard size={18} />
+              Overview
+            </Link>
+            <Link to="/financials" className="nav-item banking-nav-item active">
+              <CircleDollarSign size={18} />
+              Financials
+            </Link>
+            <Link to="/banking" className="nav-item banking-nav-item">
+              <Landmark size={18} />
+              Banking
+            </Link>
+          </nav>
         </div>
 
-        <nav className="dashboard-nav">
-          <Link to="/dashboard" className="nav-item">Overview</Link>
-          <Link to="/financials" className="nav-item active">Financials</Link>
-          <button type="button" className="nav-item nav-button" onClick={() => {
-            setSelectedGoalId(null);
-            setSelectedCreditCardPlanId(null);
-          }}>Goals</button>
-          <button type="button" className="nav-item nav-button" onClick={openCreateGoal}>Create</button>
-          <button type="button" className="nav-item nav-button" onClick={openCreditCardPlan}>Card plan</button>
-        </nav>
+        <div className="banking-sidebar-bottom">
+          <button type="button" className="banking-sidebar-action" onClick={onToggleTheme} aria-label="Toggle color theme">
+            {theme === 'light' ? <Sun size={18} /> : <Moon size={18} />}
+            {theme === 'light' ? 'Light mode' : 'Dark mode'}
+          </button>
+          <button type="button" className="banking-sidebar-action" onClick={handleLogout}>
+            <LogOut size={18} />
+            Logout
+          </button>
+        </div>
       </aside>
 
       <section className="dashboard-main financials-main">
@@ -743,72 +1130,119 @@ function Financials({ theme, onToggleTheme }) {
             <p className="eyebrow">Financials</p>
             <h1>{user?.name ? `${user.name}'s money goals` : 'Money goals'}</h1>
           </div>
-
-          <div className="topbar-actions">
-            <button type="button" className="theme-toggle" onClick={onToggleTheme} aria-label="Toggle color theme">
-              <span className={theme === 'light' ? 'theme-option active' : 'theme-option'}>
-                <Sun size={16} />
-                Light
-              </span>
-              <span className={theme === 'dark' ? 'theme-option active' : 'theme-option'}>
-                <Moon size={16} />
-                Dark
-              </span>
-            </button>
-
-            <button type="button" className="logout-button" onClick={handleLogout}>
-              <LogOut size={17} />
-              Logout
-            </button>
-          </div>
         </header>
 
         {!selectedGoal && !selectedCreditCardPlan && (
           <>
             <section className="finance-hero">
-              <div>
-                <p className="eyebrow">Overview</p>
-                <h2>Track goals and payoff plans without mixing them up.</h2>
-                <p>Create savings goals, shared goals, and dedicated credit card payoff plans with clear next steps.</p>
-                <div className="hero-action-row">
-                  <button type="button" className="finance-primary-action" onClick={openCreateGoal}>
-                    <Plus size={18} />
-                    New goal
-                  </button>
-                  <button type="button" className="finance-secondary-action" onClick={openCreditCardPlan}>
-                    <CreditCard size={18} />
-                    Credit card plan
-                  </button>
+              <div className="finance-snapshot-grid" aria-label="Financial snapshot">
+                <div className="finance-snapshot-card">
+                  <span className="banking-snapshot-icon green"><PiggyBank size={22} /></span>
+                  <div>
+                    <small>Tracked</small>
+                    <strong>{formatMoney(totals.current)}</strong>
+                    <em>of {formatMoney(totals.target)}</em>
+                  </div>
+                </div>
+
+                <div className="finance-snapshot-card">
+                  <span className="banking-snapshot-icon blue"><Target size={22} /></span>
+                  <div>
+                    <small>Active goals</small>
+                    <strong>{goals.length}</strong>
+                    <em>{totals.shared} shared</em>
+                  </div>
+                </div>
+
+                <div className="finance-snapshot-card">
+                  <span className="banking-snapshot-icon green"><Coins size={22} /></span>
+                  <div>
+                    <small>Progress</small>
+                    <strong>{overallGoalProgress}%</strong>
+                    <em>Across goals</em>
+                  </div>
+                </div>
+
+                <div className="finance-snapshot-card">
+                  <span className="banking-snapshot-icon rose"><CreditCard size={22} /></span>
+                  <div>
+                    <small>Card plans</small>
+                    <strong>{creditTotals.active}</strong>
+                    <em>{formatMoney(creditTotals.balance)} owed</em>
+                  </div>
+                </div>
+
+                <div className="finance-snapshot-card">
+                  <span className="banking-snapshot-icon blue"><CalendarDays size={22} /></span>
+                  <div>
+                    <small>Next target</small>
+                    <strong>{nextGoalDue ? formatDate(nextGoalDue.dueDate) : 'Not set'}</strong>
+                    <em>{nextGoalDue?.title || 'No upcoming goal'}</em>
+                  </div>
                 </div>
               </div>
 
-              <div className="finance-hero-stat">
-                <PiggyBank size={26} />
-                <span>{formatMoney(totals.current)}</span>
-                <p>tracked toward {formatMoney(totals.target)}</p>
+              <div className="finance-hero-actions">
+                <button type="button" className="finance-primary-action" onClick={openCreateGoal}>
+                  <Plus size={18} />
+                  New goal
+                </button>
+                <button type="button" className="finance-secondary-action" onClick={openCreditCardPlan}>
+                  <CreditCard size={18} />
+                  Card plan
+                </button>
               </div>
             </section>
 
-            <section className="finance-summary">
-              <article className="metric-card">
-                <span className="metric-icon blue"><Target size={20} /></span>
-                <p>Active goals</p>
-                <strong>{goals.length}</strong>
+            <section className="finance-focus-grid">
+              <article className="finance-panel finance-focus-card">
+                <div className="banking-panel-title">
+                  <span className="banking-snapshot-icon green"><Target size={21} /></span>
+                  <h3>Goal focus</h3>
+                </div>
+
+                {goalFocus ? (
+                  <>
+                    <div className="finance-focus-main">
+                      <strong>{goalFocus.title}</strong>
+                      <span>{formatMoney(goalFocus.currentAmount)} of {formatMoney(goalFocus.targetAmount)}</span>
+                    </div>
+                    <div className="goal-progress-track">
+                      <span style={{ width: `${goalFocus.progress}%` }} />
+                    </div>
+                    <div className="detail-meta-row">
+                      <span>{goalFocus.progress}% complete</span>
+                      <span>{formatDate(goalFocus.dueDate)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="muted-text">No goals yet.</p>
+                )}
               </article>
-              <article className="metric-card">
-                <span className="metric-icon green"><Heart size={20} /></span>
-                <p>Shared goals</p>
-                <strong>{totals.shared}</strong>
-              </article>
-              <article className="metric-card">
-                <span className="metric-icon amber"><Coins size={20} /></span>
-                <p>Progress</p>
-                <strong>{totals.target ? Math.round((totals.current / totals.target) * 100) : 0}%</strong>
-              </article>
-              <article className="metric-card">
-                <span className="metric-icon rose"><CreditCard size={20} /></span>
-                <p>Card plans</p>
-                <strong>{creditTotals.active}</strong>
+
+              <article className="finance-panel finance-focus-card">
+                <div className="banking-panel-title">
+                  <span className="banking-snapshot-icon rose"><CreditCard size={21} /></span>
+                  <h3>Debt focus</h3>
+                </div>
+
+                {debtFocus ? (
+                  <>
+                    <div className="finance-focus-main">
+                      <strong>{debtFocus.cardName}</strong>
+                      <span>{formatMoney(debtFocus.totalBalance)} remaining</span>
+                    </div>
+                    <div className="goal-progress-track debt-track">
+                      <span style={{ width: `${debtFocus.progress}%` }} />
+                    </div>
+                    <div className="detail-meta-row">
+                      <span>{formatMoney(debtFocus.plannedMonthlyPayment)} monthly</span>
+                      <span>{formatDate(debtFocus.targetPayoffDate)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="muted-text">No debt payoff plans yet.</p>
+                )}
               </article>
             </section>
           </>
@@ -822,47 +1256,104 @@ function Financials({ theme, onToggleTheme }) {
         )}
 
         {!selectedGoal && !selectedCreditCardPlan && (
-          <>
-            <section className="finance-section" id="goals" aria-label="Financial goals">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">Goals created</p>
-                  <h2>Financial goals</h2>
-                </div>
+          <section className="finance-dashboard-grid">
+            <article className="finance-panel finance-table-panel" id="goals" aria-label="Financial goals">
+              <div className="banking-panel-title">
+                <span className="banking-snapshot-icon green"><PiggyBank size={21} /></span>
+                <h3>Financial goals</h3>
+                <span className="banking-count-pill">{goals.length} goals</span>
                 <button type="button" className="ghost-button" onClick={openCreateGoal}>
                   <Plus size={16} />
                   New goal
                 </button>
               </div>
 
-              <div className="goal-board">
+              <div className="finance-table-list finance-goal-list">
+                {goals.length > 0 && (
+                  <div className="finance-table-header finance-goal-row">
+                    <span>Goal</span>
+                    <span>Type</span>
+                    <span>Current / Target</span>
+                    <span>Progress</span>
+                    <span>Due date</span>
+                    <span>Focus</span>
+                  </div>
+                )}
+
                 {goals.map((goal) => (
-                  <button type="button" className="goal-card goal-summary-card" key={goal.id} onClick={() => setSelectedGoalId(goal.id)}>
-                    <div className="goal-card-top">
-                      <div>
-                        <span className={goal.visibility === 'shared' ? 'goal-type shared' : 'goal-type'}>
-                          {goal.visibility === 'shared' ? 'Shared' : 'Personal'}
-                        </span>
-                        <h3>{goal.title}</h3>
-                        <p>{goal.description || 'No description yet.'}</p>
-                      </div>
-                      <VisualMeter goal={goal} />
+                  <article
+                    className={goalFocus?.id === goal.id ? 'finance-data-row finance-goal-row is-focused' : 'finance-data-row finance-goal-row'}
+                    key={goal.id}
+                  >
+                    <button type="button" className="finance-row-name-button" onClick={() => setSelectedGoalId(goal.id)}>
+                      <span className={goal.visibility === 'shared' ? 'finance-row-icon shared' : 'finance-row-icon'}>
+                        {goal.visibility === 'shared' ? <Users size={18} /> : <Target size={18} />}
+                      </span>
+                      <span className="finance-name-cell">
+                        <strong>{goal.title}</strong>
+                        <small>{goal.description || 'No description yet.'}</small>
+                      </span>
+                    </button>
+
+                    <div className="finance-cell">
+                      <span className={goal.visibility === 'shared' ? 'finance-type-label shared' : 'finance-type-label'}>
+                        {goal.visibility === 'shared' ? 'Shared' : 'Personal'}
+                      </span>
                     </div>
 
-                    <div className="goal-money-row">
+                    <div className="finance-cell finance-money-cell">
                       <strong>{formatMoney(goal.currentAmount)}</strong>
                       <span>of {formatMoney(goal.targetAmount)}</span>
                     </div>
 
-                    <div className="goal-progress-track">
-                      <span style={{ width: `${goal.progress}%` }} />
+                    <div className="finance-cell finance-progress-cell">
+                      <strong>{goal.progress}%</strong>
+                      <div className="finance-mini-progress">
+                        <span style={{ width: `${goal.progress}%` }} />
+                      </div>
                     </div>
 
-                    <div className="goal-card-footer">
-                      <span><CalendarDays size={16} /> {formatDate(goal.dueDate)}</span>
-                      <strong>Open goal</strong>
+                    <div className="finance-cell">
+                      <strong>{formatDate(goal.dueDate)}</strong>
+                      <span>{formatDateDistance(goal.dueDate)}</span>
                     </div>
-                  </button>
+
+                    <div className="finance-row-actions">
+                      {goal.visibility === 'shared' ? (
+                        <span className="finance-share-status active"><Share2 size={15} /> Shared</span>
+                      ) : ownsItem(goal) && (
+                        <button
+                          type="button"
+                          className={goal.sharedToDashboard ? 'finance-share-button active' : 'finance-share-button'}
+                          onClick={() => handleGoalDashboardShare(goal)}
+                        >
+                          <Share2 size={15} />
+                          {goal.sharedToDashboard ? 'Shared' : 'Share'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={goalFocus?.id === goal.id ? 'finance-focus-button active' : 'finance-focus-button'}
+                        onClick={() => setFocusedGoalId(goal.id)}
+                      >
+                        <Star size={15} />
+                        {goalFocus?.id === goal.id ? 'Focused' : 'Focus'}
+                      </button>
+                      {ownsItem(goal) && (
+                        <button
+                          type="button"
+                          className="finance-delete-button"
+                          onClick={() => handleDeleteGoal(goal)}
+                        >
+                          <Trash2 size={15} />
+                          Delete
+                        </button>
+                      )}
+                      <button type="button" className="banking-row-action" onClick={() => setSelectedGoalId(goal.id)} aria-label={`Open ${goal.title}`}>
+                        <ChevronRight size={18} />
+                      </button>
+                    </div>
+                  </article>
                 ))}
 
                 {goals.length === 0 && (
@@ -877,54 +1368,108 @@ function Financials({ theme, onToggleTheme }) {
                   </article>
                 )}
               </div>
-            </section>
+            </article>
 
-            <section className="finance-section" aria-label="Credit card payoff plans">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">Credit card plans</p>
-                  <h2>Debt payoff plans</h2>
-                </div>
+            <article className="finance-panel finance-table-panel" aria-label="Credit card payoff plans">
+              <div className="banking-panel-title">
+                <span className="banking-snapshot-icon rose"><CreditCard size={21} /></span>
+                <h3>Debt payoff plans</h3>
+                <span className="banking-count-pill">{creditCardPlans.length} plans</span>
                 <button type="button" className="ghost-button" onClick={openCreditCardPlan}>
                   <CreditCard size={16} />
                   New card plan
                 </button>
               </div>
 
-              <div className="goal-board credit-plan-board">
-                {creditCardPlans.map((plan) => (
-                  <button type="button" className="goal-card goal-summary-card credit-plan-card" key={plan.id} onClick={() => setSelectedCreditCardPlanId(plan.id)}>
-                    <div className="goal-card-top">
-                      <div>
-                        <span className="goal-type debt">Credit card</span>
-                        <h3>{plan.cardName}</h3>
-                        <p>{plan.bank || 'No bank added yet.'}</p>
-                      </div>
-                      <div className="debt-meter" aria-label={`${plan.progress}% paid down`}>
-                        <span>{plan.progress}%</span>
-                      </div>
-                    </div>
+              <div className="finance-table-list finance-debt-list">
+                {creditCardPlans.length > 0 && (
+                  <div className="finance-table-header finance-debt-row">
+                    <span>Card</span>
+                    <span>Balance</span>
+                    <span>APR</span>
+                    <span>Payment</span>
+                    <span>Target date</span>
+                    <span>Progress</span>
+                    <span>Focus</span>
+                  </div>
+                )}
 
-                    <div className="goal-money-row">
+                {creditCardPlans.map((plan) => (
+                  <article
+                    className={debtFocus?.id === plan.id ? 'finance-data-row finance-debt-row is-focused' : 'finance-data-row finance-debt-row'}
+                    key={plan.id}
+                  >
+                    <button type="button" className="finance-row-name-button" onClick={() => setSelectedCreditCardPlanId(plan.id)}>
+                      <span className="finance-row-icon debt">
+                        <CreditCard size={18} />
+                      </span>
+                      <span className="finance-name-cell">
+                        <strong>{plan.cardName}</strong>
+                        <small>{plan.bank || 'No bank added yet.'}</small>
+                      </span>
+                    </button>
+
+                    <div className="finance-cell finance-money-cell">
                       <strong>{formatMoney(plan.totalBalance)}</strong>
                       <span>remaining</span>
                     </div>
 
-                    <div className="goal-progress-track debt-track">
-                      <span style={{ width: `${plan.progress}%` }} />
+                    <div className="finance-cell finance-apr-cell">
+                      <strong>{formatPercent(plan.purchaseApr)}</strong>
+                      <span>APR</span>
                     </div>
 
-                    <div className="credit-card-mini-grid">
-                      <span>APR <strong>{formatPercent(plan.purchaseApr)}</strong></span>
-                      <span>Calculated <strong>{formatMoney(plan.plannedMonthlyPayment)}</strong></span>
-                      <span>Target <strong>{formatDate(plan.targetPayoffDate)}</strong></span>
+                    <div className="finance-cell">
+                      <strong>{formatMoney(plan.plannedMonthlyPayment)}</strong>
+                      <span>Monthly</span>
                     </div>
 
-                    <div className="goal-card-footer">
-                      <span><CalendarDays size={16} /> Due {formatOrdinal(plan.monthlyDueDay)}</span>
-                      <strong>Open plan</strong>
+                    <div className="finance-cell">
+                      <strong>{formatDate(plan.targetPayoffDate)}</strong>
+                      <span>{formatDateDistance(plan.targetPayoffDate)}</span>
                     </div>
-                  </button>
+
+                    <div className="finance-cell finance-progress-cell debt">
+                      <strong>{plan.progress}%</strong>
+                      <div className="finance-mini-progress debt">
+                        <span style={{ width: `${plan.progress}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="finance-row-actions">
+                      {ownsItem(plan) && (
+                        <button
+                          type="button"
+                          className={plan.sharedToDashboard ? 'finance-share-button active debt' : 'finance-share-button debt'}
+                          onClick={() => handlePlanDashboardShare(plan)}
+                        >
+                          <Share2 size={15} />
+                          {plan.sharedToDashboard ? 'Shared' : 'Share'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={debtFocus?.id === plan.id ? 'finance-focus-button active debt' : 'finance-focus-button debt'}
+                        onClick={() => setFocusedDebtPlanId(plan.id)}
+                      >
+                        <Star size={15} />
+                        {debtFocus?.id === plan.id ? 'Focused' : 'Focus'}
+                      </button>
+                      {ownsItem(plan) && (
+                        <button
+                          type="button"
+                          className="finance-delete-button debt"
+                          onClick={() => handleDeleteCreditCardPlan(plan)}
+                        >
+                          <Trash2 size={15} />
+                          Delete
+                        </button>
+                      )}
+                      <button type="button" className="banking-row-action" onClick={() => setSelectedCreditCardPlanId(plan.id)} aria-label={`Open ${plan.cardName}`}>
+                        <ChevronRight size={18} />
+                      </button>
+                    </div>
+                  </article>
                 ))}
 
                 {creditCardPlans.length === 0 && (
@@ -939,8 +1484,8 @@ function Financials({ theme, onToggleTheme }) {
                   </article>
                 )}
               </div>
-            </section>
-          </>
+            </article>
+          </section>
         )}
 
         {selectedGoal && (
@@ -957,8 +1502,37 @@ function Financials({ theme, onToggleTheme }) {
                 </span>
                 <h2>{selectedGoal.title}</h2>
                 <p>{selectedGoal.description || 'No description yet.'}</p>
+                <div className="goal-detail-stat-row">
+                  <span><strong>{selectedGoal.progress}%</strong><small>Complete</small></span>
+                  <span><strong>{formatMoney(selectedGoal.currentAmount)}</strong><small>Saved</small></span>
+                  <span><strong>{formatDateDistance(selectedGoal.dueDate)}</strong><small>Timeline</small></span>
+                </div>
               </div>
-              <VisualMeter goal={selectedGoal} />
+              <div className="detail-hero-actions">
+                {selectedGoal.visibility === 'shared' ? (
+                  <span className="finance-share-status active"><Share2 size={15} /> Shared goal</span>
+                ) : ownsItem(selectedGoal) && (
+                  <button
+                    type="button"
+                    className={selectedGoal.sharedToDashboard ? 'finance-share-button active' : 'finance-share-button'}
+                    onClick={() => handleGoalDashboardShare(selectedGoal)}
+                  >
+                    <Share2 size={15} />
+                    {selectedGoal.sharedToDashboard ? 'Shared to dashboard' : 'Share to dashboard'}
+                  </button>
+                )}
+                {ownsItem(selectedGoal) && (
+                  <button
+                    type="button"
+                    className="finance-delete-button"
+                    onClick={() => handleDeleteGoal(selectedGoal)}
+                  >
+                    <Trash2 size={15} />
+                    Delete goal
+                  </button>
+                )}
+                <VisualMeter goal={selectedGoal} />
+              </div>
             </article>
 
             <section className="goal-detail-grid">
@@ -1001,6 +1575,25 @@ function Financials({ theme, onToggleTheme }) {
                   />
                   <button type="button" onClick={() => handleContribution(selectedGoal.id)}>Log progress</button>
                 </div>
+
+                <div className="progress-log">
+                  <div className="progress-log-heading">
+                    <h4>Progress log</h4>
+                    <span>{(selectedGoal.contributions || []).length} entries</span>
+                  </div>
+                  {(selectedGoal.contributions || []).slice().reverse().map((entry) => (
+                    <div className="progress-log-row" key={entry._id}>
+                      <span>
+                        <strong>{formatMoney(entry.amount)}</strong>
+                        <small>{entry.authorName} · {formatDate(entry.createdAt)}</small>
+                      </span>
+                      <p>{entry.note || 'Progress added.'}</p>
+                    </div>
+                  ))}
+                  {(selectedGoal.contributions || []).length === 0 && (
+                    <p className="muted-text">Logged progress will show here.</p>
+                  )}
+                </div>
               </article>
 
               <article className="finance-panel goal-task-list">
@@ -1030,6 +1623,26 @@ function Financials({ theme, onToggleTheme }) {
                     )}
                   </div>
                 ))}
+
+                <div className="add-task-inline">
+                  <input
+                    value={newGoalTasks[selectedGoal.id]?.title || ''}
+                    onChange={(event) => updateNewGoalTask(selectedGoal.id, 'title', event.target.value)}
+                    placeholder="Add another task..."
+                  />
+                  <select
+                    value={newGoalTasks[selectedGoal.id]?.difficulty || 'easy'}
+                    onChange={(event) => updateNewGoalTask(selectedGoal.id, 'difficulty', event.target.value)}
+                  >
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                  <button type="button" onClick={() => handleAddGoalTask(selectedGoal.id)}>
+                    <Plus size={16} />
+                    Add task
+                  </button>
+                </div>
               </article>
 
               <article className="finance-panel goal-notes">
@@ -1076,9 +1689,31 @@ function Financials({ theme, onToggleTheme }) {
                 <h2>{selectedCreditCardPlan.cardName}</h2>
                 <p>{selectedCreditCardPlan.bank || 'Credit card payoff plan'}</p>
               </div>
-              <div className="debt-detail-meter">
-                <strong>{selectedCreditCardPlan.progress}%</strong>
-                <span>paid down</span>
+              <div className="detail-hero-actions">
+                {ownsItem(selectedCreditCardPlan) && (
+                  <button
+                    type="button"
+                    className={selectedCreditCardPlan.sharedToDashboard ? 'finance-share-button active debt' : 'finance-share-button debt'}
+                    onClick={() => handlePlanDashboardShare(selectedCreditCardPlan)}
+                  >
+                    <Share2 size={15} />
+                    {selectedCreditCardPlan.sharedToDashboard ? 'Shared to dashboard' : 'Share to dashboard'}
+                  </button>
+                )}
+                {ownsItem(selectedCreditCardPlan) && (
+                  <button
+                    type="button"
+                    className="finance-delete-button debt"
+                    onClick={() => handleDeleteCreditCardPlan(selectedCreditCardPlan)}
+                  >
+                    <Trash2 size={15} />
+                    Delete plan
+                  </button>
+                )}
+                <div className="debt-detail-meter">
+                  <strong>{selectedCreditCardPlan.progress}%</strong>
+                  <span>paid down</span>
+                </div>
               </div>
             </article>
 
@@ -1251,6 +1886,28 @@ function Financials({ theme, onToggleTheme }) {
 
             {goalForm.visibility && (
               <form className="finance-form" onSubmit={handleCreateGoal}>
+                {goalForm.visibility === 'shared' ? (
+                  <div className="dashboard-share-note">
+                    <Share2 size={17} />
+                    <div>
+                      <strong>Shared goals go straight to the couple dashboard.</strong>
+                      <span>Only summary progress is shown there.</span>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="checkbox-row dashboard-share-toggle" htmlFor="goalSharedToDashboard">
+                    <input
+                      id="goalSharedToDashboard"
+                      name="sharedToDashboard"
+                      type="checkbox"
+                      checked={goalForm.sharedToDashboard}
+                      onChange={handleGoalChange}
+                    />
+                    <Share2 size={17} />
+                    <span>Share summary to couple dashboard</span>
+                  </label>
+                )}
+
                 <label htmlFor="title">Goal title</label>
                 <input id="title" name="title" value={goalForm.title} onChange={handleGoalChange} placeholder="Save $1,000 emergency fund" required />
 
@@ -1364,6 +2021,88 @@ function Financials({ theme, onToggleTheme }) {
             )}
 
             <form className="finance-form" onSubmit={handleCreateCreditCardPlan}>
+              <div className="banking-link-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Banking source</p>
+                    <h4>Use a linked credit card</h4>
+                  </div>
+                  <span className="status-pill">{bankingCreditCards.length} available</span>
+                </div>
+
+                <label htmlFor="linkedBankingAccountId">Credit card from Banking</label>
+                <select
+                  id="linkedBankingAccountId"
+                  name="linkedBankingAccountId"
+                  value={creditCardForm.linkedBankingAccountId}
+                  onChange={handleCreditCardChange}
+                >
+                  <option value="">Manual payoff plan</option>
+                  {bankingCreditCards.map((account) => (
+                    <option value={account.id} key={account.id}>
+                      {getCreditCardLabel(account)} - {account.institutionName || 'Linked institution'} - {formatMoney(account.currentBalance)}
+                    </option>
+                  ))}
+                </select>
+
+                {selectedBankingCreditCard ? (
+                  <>
+                    <div className="linked-card-snapshot">
+                      <div>
+                        <span>Balance</span>
+                        <strong>{formatMoney(selectedBankingCreditCard.currentBalance)}</strong>
+                      </div>
+                      <div>
+                        <span>Minimum</span>
+                        <strong>{formatOptionalMoney(selectedBankingCreditCard.minimumPaymentAmount)}</strong>
+                      </div>
+                      <div>
+                        <span>Due date</span>
+                        <strong>{formatDate(selectedBankingCreditCard.nextPaymentDueDate)}</strong>
+                      </div>
+                      <div>
+                        <span>APR</span>
+                        <strong>{formatOptionalPercent(selectedBankingCreditCard.purchaseApr)}</strong>
+                      </div>
+                      <div>
+                        <span>Synced</span>
+                        <strong>{formatRelativeTime(selectedBankingCreditCard.lastSyncedAt)}</strong>
+                      </div>
+                    </div>
+                    {selectedBankingCreditCard.aprs?.length > 0 ? (
+                      <div className="linked-apr-list">
+                        {selectedBankingCreditCard.aprs.map((apr) => (
+                          <span key={`${apr.aprType}-${apr.aprPercentage}`}>
+                            {formatAprType(apr.aprType)}
+                            <strong>{formatPercent(apr.aprPercentage)}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="banking-link-hint">
+                        This issuer did not provide APR data through Plaid, so enter the purchase APR manually.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="banking-link-hint">
+                    Choose a card to fill the plan with its Banking balance, minimum payment, due day, and institution details.
+                  </p>
+                )}
+              </div>
+
+              <label className="checkbox-row dashboard-share-toggle debt" htmlFor="creditSharedToDashboard">
+                <input
+                  id="creditSharedToDashboard"
+                  name="sharedToDashboard"
+                  type="checkbox"
+                  checked={creditCardForm.sharedToDashboard}
+                  onChange={handleCreditCardChange}
+                />
+                <Share2 size={17} />
+                <span>Share summary to couple dashboard</span>
+              </label>
+
               <div className="form-row">
                 <div>
                   <label htmlFor="cardName">Card name</label>

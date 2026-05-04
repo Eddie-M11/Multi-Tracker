@@ -1,6 +1,8 @@
 const OpenAI = require('openai');
+const mongoose = require('mongoose');
 
 const CreditCardPlan = require('../models/CreditCardPlan');
+const { awardCoupleProgress } = require('../utils/coupleProgress');
 
 const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
 const MAX_MONTHS = 360;
@@ -208,6 +210,16 @@ function serializePlan(plan) {
     id: plan._id,
     cardName: plan.cardName,
     bank: plan.bank,
+    ownerId: plan.ownerId,
+    linkedBankingAccountId: plan.linkedBankingAccountId,
+    linkedPlaidAccountId: plan.linkedPlaidAccountId,
+    linkedInstitutionName: plan.linkedInstitutionName,
+    linkedAccountMask: plan.linkedAccountMask,
+    balanceSource: plan.balanceSource,
+    balanceSyncedAt: plan.balanceSyncedAt,
+    sharedToDashboard: Boolean(plan.sharedToDashboard),
+    sharedAt: plan.sharedAt,
+    sharedBy: plan.sharedBy,
     openDate: plan.openDate,
     targetPayoffDate: plan.targetPayoffDate,
     monthlyDueDay: plan.monthlyDueDay,
@@ -299,10 +311,19 @@ function normalizeCreateInput(body) {
   const hasCashAdvance = body.hasCashAdvance === true || body.hasCashAdvance === 'true';
   const cashAdvanceFee = hasCashAdvance ? toMoney(body.cashAdvanceFee) : 0;
   const cashAdvanceBalance = hasCashAdvance ? toMoney(rawCashAdvanceBalance + cashAdvanceFee) : 0;
+  const linkedBankingAccountId = mongoose.Types.ObjectId.isValid(body.linkedBankingAccountId)
+    ? body.linkedBankingAccountId
+    : null;
 
   return {
     cardName: String(body.cardName || '').trim(),
     bank: String(body.bank || '').trim(),
+    linkedBankingAccountId,
+    linkedPlaidAccountId: String(body.linkedPlaidAccountId || '').trim(),
+    linkedInstitutionName: String(body.linkedInstitutionName || '').trim(),
+    linkedAccountMask: String(body.linkedAccountMask || '').trim(),
+    balanceSource: linkedBankingAccountId ? 'banking' : 'manual',
+    balanceSyncedAt: body.balanceSyncedAt || null,
     openDate: body.openDate || null,
     targetPayoffDate: body.targetPayoffDate || null,
     monthlyDueDay: clampDueDay(body.monthlyDueDay),
@@ -316,6 +337,7 @@ function normalizeCreateInput(body) {
     cashAdvanceFee,
     minimumPayment: toMoney(body.minimumPayment),
     plannedMonthlyPayment: 0,
+    sharedToDashboard: body.sharedToDashboard === true || body.sharedToDashboard === 'true',
   };
 }
 
@@ -348,6 +370,8 @@ async function createPlan(req, res) {
     const plan = await CreditCardPlan.create({
       ...planInput,
       ownerId: req.user._id,
+      sharedAt: planInput.sharedToDashboard ? new Date() : null,
+      sharedBy: planInput.sharedToDashboard ? req.user._id : null,
       ...calculations,
       aiTips,
       status: planInput.originalBalance <= 0 ? 'paid_off' : 'active',
@@ -420,6 +444,70 @@ async function addPayment(req, res) {
 
     await plan.save();
 
+    if (plan.sharedToDashboard) {
+      const xp = 10 + Math.min(50, Math.floor(appliedPayment / 25));
+      const coins = Math.max(2, Math.floor(xp / 10));
+
+      await awardCoupleProgress(req.user, {
+        xp,
+        coins,
+        type: 'debt_payment',
+        title: `Payment logged for ${plan.cardName}`,
+        metadata: { planId: plan._id, amount: appliedPayment, balanceAfter: toMoney(plan.purchaseBalance + plan.cashAdvanceBalance) },
+      });
+    }
+
+    return res.status(200).json({ plan: serializePlan(plan) });
+  } catch (error) {
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function deletePlan(req, res) {
+  try {
+    const plan = await CreditCardPlan.findById(req.params.planId);
+
+    if (!plan) return res.status(404).json({ message: 'Credit card plan not found' });
+    if (req.user.role !== 'admin' && plan.ownerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Only the owner can delete this payoff plan' });
+    }
+
+    await plan.deleteOne();
+
+    return res.status(200).json({ planId: req.params.planId });
+  } catch (error) {
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function updateDashboardShare(req, res) {
+  try {
+    const plan = await CreditCardPlan.findById(req.params.planId);
+
+    if (!plan) return res.status(404).json({ message: 'Credit card plan not found' });
+    if (plan.ownerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Only the owner can change dashboard sharing' });
+    }
+
+    const nextValue = Boolean(req.body.sharedToDashboard);
+    const wasShared = Boolean(plan.sharedToDashboard);
+
+    plan.sharedToDashboard = nextValue;
+    plan.sharedAt = nextValue ? plan.sharedAt || new Date() : null;
+    plan.sharedBy = nextValue ? plan.sharedBy || req.user._id : null;
+
+    await plan.save();
+
+    if (nextValue && !wasShared) {
+      await awardCoupleProgress(req.user, {
+        xp: 0,
+        coins: 0,
+        type: 'share_plan',
+        title: `Shared ${plan.cardName}`,
+        metadata: { planId: plan._id },
+      });
+    }
+
     return res.status(200).json({ plan: serializePlan(plan) });
   } catch (error) {
     return res.status(500).json({ message: 'Server error' });
@@ -429,5 +517,7 @@ async function addPayment(req, res) {
 module.exports = {
   addPayment,
   createPlan,
+  deletePlan,
   listPlans,
+  updateDashboardShare,
 };

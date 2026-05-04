@@ -65,6 +65,37 @@ const noteSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const contributionSchema = new mongoose.Schema(
+  {
+    amount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    note: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    authorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    authorName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    balanceAfter: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+  },
+  { timestamps: true }
+);
+
 const goalSchema = new mongoose.Schema(
   {
     title: {
@@ -121,6 +152,19 @@ const goalSchema = new mongoose.Schema(
       default: 1,
       min: 1,
     },
+    sharedToDashboard: {
+      type: Boolean,
+      default: false,
+    },
+    sharedAt: {
+      type: Date,
+      default: null,
+    },
+    sharedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     status: {
       type: String,
       enum: ['active', 'completed', 'paused'],
@@ -128,6 +172,7 @@ const goalSchema = new mongoose.Schema(
     },
     tasks: [taskSchema],
     notes: [noteSchema],
+    contributions: [contributionSchema],
   },
   { timestamps: true }
 );

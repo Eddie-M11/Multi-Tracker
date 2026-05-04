@@ -54,6 +54,28 @@ const paymentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const dashboardNoteSchema = new mongoose.Schema(
+  {
+    authorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    authorName: {
+      type: String,
+      trim: true,
+      required: true,
+    },
+    text: {
+      type: String,
+      trim: true,
+      required: true,
+      maxlength: 1200,
+    },
+  },
+  { timestamps: true }
+);
+
 const creditCardPlanSchema = new mongoose.Schema(
   {
     ownerId: {
@@ -70,6 +92,47 @@ const creditCardPlanSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: '',
+    },
+    linkedBankingAccountId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    linkedPlaidAccountId: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    linkedInstitutionName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    linkedAccountMask: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    balanceSource: {
+      type: String,
+      enum: ['manual', 'banking'],
+      default: 'manual',
+    },
+    balanceSyncedAt: {
+      type: Date,
+      default: null,
+    },
+    sharedToDashboard: {
+      type: Boolean,
+      default: false,
+    },
+    sharedAt: {
+      type: Date,
+      default: null,
+    },
+    sharedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
     },
     openDate: {
       type: Date,
@@ -163,6 +226,7 @@ const creditCardPlanSchema = new mongoose.Schema(
     },
     schedule: [scheduleItemSchema],
     payments: [paymentSchema],
+    dashboardNotes: [dashboardNoteSchema],
   },
   { timestamps: true }
 );

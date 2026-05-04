@@ -7,7 +7,9 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const adminRoutes = require('./routes/adminRoutes');
 const authRoutes = require('./routes/authRoutes');
+const bankingRoutes = require('./routes/bankingRoutes');
 const creditCardPlanRoutes = require('./routes/creditCardPlanRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 const goalRoutes = require('./routes/goalRoutes');
 const relationshipRoutes = require('./routes/relationshipRoutes');
 
@@ -19,7 +21,9 @@ app.use(cors({ credentials: true }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/banking', bankingRoutes);
 app.use('/api/credit-card-plans', creditCardPlanRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/goals', goalRoutes);
 app.use('/api/relationship', relationshipRoutes);
 
